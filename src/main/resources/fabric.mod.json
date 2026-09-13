@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "deepgate",
+	"version": "${version}",
+	"name": "Deepgate",
+	"description": "Server-side teleportation: TPA, spawn, beacon homes, /back, and reinforced-deepslate portal networks. Vanilla clients need no mod and no resource pack.",
+	"authors": [
+		"Brendan"
+	],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.brendan.deepgate.Deepgate"
+		],
+		"fabric-gametest": [
+			"com.brendan.deepgate.gametest.M1GameTests"
+		]
+	},
+	"mixins": [
+		"deepgate.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

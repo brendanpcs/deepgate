@@ -1,0 +1,2 @@
+# Keeps the gametest resources directory present so Loom does not warn about a missing
+# build/resources/gametest entry on the runtime classpath.
