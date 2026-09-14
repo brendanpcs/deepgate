@@ -76,17 +76,45 @@ public final class BeaconScan {
 		return level.getBlockState(pos).getLightDampening() > 0;
 	}
 
-	/** The beacon still standing at a recorded position, if the chunk is loaded and it is there. */
-	public static Optional<Found> beaconAt(ServerLevel level, BlockPos pos) {
-		if (!level.isLoaded(pos)) {
-			return Optional.empty();
+	/** What was found at a recorded beacon position. */
+	public enum Presence {
+		/** A beacon is there. */
+		PRESENT,
+		/** The chunk is loaded and there is no beacon, so it is genuinely gone. */
+		ABSENT,
+		/** The chunk is not loaded, so nothing can be said either way. */
+		UNKNOWN
+	}
+
+	/** A lookup result that distinguishes "no beacon" from "could not look". */
+	public record Lookup(Presence presence, Optional<Found> found) {
+	}
+
+	/**
+	 * Look for the beacon at a recorded position.
+	 *
+	 * @param forceLoad pull the chunk in so the answer is definitive. Travel does this, because a
+	 *                  home should work at any distance; casual listing does not, because a player
+	 *                  with homes scattered across the world would load a chunk for each one.
+	 */
+	public static Lookup lookup(ServerLevel level, BlockPos pos, boolean forceLoad) {
+		if (forceLoad) {
+			level.getChunkAt(pos);
+		} else if (!level.isLoaded(pos)) {
+			return new Lookup(Presence.UNKNOWN, Optional.empty());
 		}
 
 		if (level.getBlockEntity(pos) instanceof BeaconBlockEntity beacon) {
-			return Optional.of(new Found(pos, beacon, ((BeaconBlockEntityAccessor) beacon).deepgate$getLevels()));
+			return new Lookup(Presence.PRESENT, Optional.of(
+					new Found(pos, beacon, ((BeaconBlockEntityAccessor) beacon).deepgate$getLevels())));
 		}
 
-		return Optional.empty();
+		return new Lookup(Presence.ABSENT, Optional.empty());
+	}
+
+	/** The beacon still standing at a recorded position, without forcing the chunk to load. */
+	public static Optional<Found> beaconAt(ServerLevel level, BlockPos pos) {
+		return lookup(level, pos, false).found();
 	}
 
 	/**

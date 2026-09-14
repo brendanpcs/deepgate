@@ -83,7 +83,15 @@ public final class HomeService {
 		BEAM_BLOCKED("Beacon beam is blocked"),
 		CROSS_DIMENSION_DISABLED("In another dimension"),
 		OBSTRUCTED("No room to arrive near the beacon"),
-		UNLOADED("Too far away to check");
+		/** The beacon is genuinely gone; the record is deleted when this is discovered. */
+		GONE("Beacon is gone"),
+		/**
+		 * The beacon is too far away to inspect, which says nothing about whether it works.
+		 *
+		 * <p>Treated as usable so travel is still offered: distance must never decide whether a home
+		 * can be reached, and committing the travel loads the chunk and finds out for real.
+		 */
+		UNKNOWN("Not loaded");
 
 		private final String description;
 
@@ -95,8 +103,14 @@ public final class HomeService {
 			return description;
 		}
 
+		/** Whether travel should be offered. Unknown counts: the commit will settle it properly. */
 		public boolean usable() {
-			return this == AVAILABLE;
+			return this == AVAILABLE || this == UNKNOWN;
+		}
+
+		/** Whether this is worth showing beside the name in a list. */
+		public boolean worthReporting() {
+			return this != AVAILABLE && this != UNKNOWN;
 		}
 	}
 
@@ -204,6 +218,16 @@ public final class HomeService {
 	 * handled where the break is observed rather than here.
 	 */
 	public Availability availability(ServerPlayer player, HomeRecord home, RuleSnapshot rules) {
+		return availability(player, home, rules, false);
+	}
+
+	/**
+	 * @param forceLoad pull the beacon chunk in so the answer is definitive. Travel passes true, so
+	 *                  distance never decides whether a home can be reached; listing passes false, so
+	 *                  opening the menu does not load a chunk for every home a player owns.
+	 */
+	public Availability availability(ServerPlayer player, HomeRecord home, RuleSnapshot rules,
+			boolean forceLoad) {
 		if (!rules.allowHomes()) {
 			return Availability.HOMES_DISABLED;
 		}
@@ -212,20 +236,28 @@ public final class HomeService {
 		ServerLevel level = server.getLevel(home.dimension());
 
 		if (level == null) {
-			return Availability.UNLOADED;
+			return Availability.UNKNOWN;
 		}
 
 		if (!home.dimension().equals(player.level().dimension()) && !rules.allowCrossDimension()) {
 			return Availability.CROSS_DIMENSION_DISABLED;
 		}
 
-		Optional<BeaconScan.Found> found = BeaconScan.beaconAt(level, home.beacon());
+		BeaconScan.Lookup lookup = BeaconScan.lookup(level, home.beacon(), forceLoad);
 
-		if (found.isEmpty()) {
-			// Not proof the beacon is gone - the chunk may simply be unloaded. Deletion only happens
-			// when a break is actually observed, never from an absence of evidence.
-			return Availability.UNLOADED;
+		if (lookup.presence() == BeaconScan.Presence.UNKNOWN) {
+			// Could not look, which is not the same as looking and finding nothing.
+			return Availability.UNKNOWN;
 		}
+
+		if (lookup.presence() == BeaconScan.Presence.ABSENT) {
+			// Looked at a loaded chunk and the beacon is not there, so it really is gone. Section 49
+			// asks for exactly this: invalid records are cleaned up when discovered.
+			DeepgateState.get(server).remove(home.id());
+			return Availability.GONE;
+		}
+
+		Optional<BeaconScan.Found> found = lookup.found();
 
 		if (!found.get().qualifies(rules.homeBeaconLayers())) {
 			return Availability.PYRAMID_TOO_SMALL;
@@ -281,8 +313,9 @@ public final class HomeService {
 			case HOMES_DISABLED -> Optional.of(
 					Failure.of(Failure.Reason.FEATURE_UNAVAILABLE, availability.description()));
 			case CROSS_DIMENSION_DISABLED -> Optional.of(Failure.crossDimensionDisabled());
-			case UNLOADED -> Optional.of(
-					Failure.of(Failure.Reason.DESTINATION_MISSING, "That beacon is not loaded right now"));
+			case UNKNOWN -> Optional.empty();
+			case GONE -> Optional.of(
+					Failure.of(Failure.Reason.DESTINATION_MISSING, "That beacon no longer exists"));
 			case PYRAMID_TOO_SMALL, BEAM_BLOCKED, OBSTRUCTED -> Optional.of(
 					Failure.of(Failure.Reason.DESTINATION_INVALID, availability.description()));
 		};

@@ -70,8 +70,19 @@ public final class HomeUi {
 
 	// ------------------------------------------------------------ list
 
-	/** The {@code /home} root: "Homes - 4/10" and one entry per home (section 19). */
+	/** The {@code /home} root, with the chat copy that keeps it usable without a client. */
 	public static void openList(ServerPlayer player) {
+		openList(player, true);
+	}
+
+	/**
+	 * The {@code /home} root: "Homes - 4/10" and one entry per home (section 19).
+	 *
+	 * @param alsoChat write the list to chat as well. True when the player asked for it, false when
+	 *                 the screen was opened by walking into a beam - nobody wants their chat filled
+	 *                 every time they cross their own beacon.
+	 */
+	public static void openList(ServerPlayer player, boolean alsoChat) {
 		MinecraftServer server = player.level().getServer();
 		RuleSnapshot rules = DeepgateRules.snapshot(server);
 		List<HomeRecord> homes = Deepgate.homes().homesOf(player);
@@ -79,8 +90,11 @@ public final class HomeUi {
 		String title = "Homes - " + homes.size() + "/" + rules.maxHomes();
 
 		if (homes.isEmpty()) {
-			player.sendSystemMessage(Component.literal(
-					"You have no homes. Walk into the beam of a beacon to make one."));
+			if (alsoChat) {
+				player.sendSystemMessage(Component.literal(
+						"You have no homes. Walk into the beam of a beacon to make one."));
+			}
+
 			Deepgate.dialogs().open(player, Dialogs.notice(title,
 					"You have no homes yet. Walk into the beam of a beacon to make one."));
 			return;
@@ -94,15 +108,17 @@ public final class HomeUi {
 			CompoundTag payload = new CompoundTag();
 			payload.putString(KEY_HOME, home.id().toString());
 
-			String label = availability.usable()
-					? home.name()
-					: home.name() + " (" + availability.description() + ")";
+			String label = availability.worthReporting()
+					? home.name() + " (" + availability.description() + ")"
+					: home.name();
 
 			int colour = HomeService.beamColourOf(server, home);
 
 			buttons.add(Dialogs.navigate(beamColoured(label, colour), DETAIL, payload));
 
-			player.sendSystemMessage(beamColoured("  " + label, colour));
+			if (alsoChat) {
+				player.sendSystemMessage(beamColoured("  " + label, colour));
+			}
 		}
 
 		Deepgate.dialogs().open(player, Dialogs.menu(
@@ -129,7 +145,7 @@ public final class HomeUi {
 			body.add(Dialogs.text(TpaUi.describeFare(fare)));
 		}
 
-		if (!availability.usable()) {
+		if (availability.worthReporting()) {
 			body.add(Dialogs.text("Unavailable: " + availability.description()));
 		}
 
@@ -257,7 +273,9 @@ public final class HomeUi {
 		MinecraftServer server = player.level().getServer();
 		RuleSnapshot rules = DeepgateRules.snapshot(server);
 
-		HomeService.Availability availability = Deepgate.homes().availability(player, home, rules);
+		// forceLoad: a home must be reachable however far away it is, so the beacon chunk is pulled in
+		// rather than the travel being refused for not being able to look.
+		HomeService.Availability availability = Deepgate.homes().availability(player, home, rules, true);
 		Optional<Failure> blocked = HomeService.toFailure(availability);
 
 		if (blocked.isPresent()) {

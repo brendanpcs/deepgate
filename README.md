@@ -32,7 +32,7 @@ actually test it, rather than being forced into an awkward game test.
 
 ```bash
 ./gradlew test          # pure JUnit, no Minecraft needed  (90 tests)
-./gradlew runGametest   # world-dependent behaviour        (26 tests)
+./gradlew runGametest   # world-dependent behaviour        (28 tests)
 ./gradlew runServer     # boot a dev server by hand
 ```
 
@@ -53,7 +53,7 @@ grep -rL "import net.minecraft" src/main/java --include='*.java'
 | Milestone | Scope | State |
 | --- | --- | --- |
 | M1 | Gamerules, pricing, experience, combat, `/back`, dialogs, TPA | **Done** - server boots, mixin applies, playtested |
-| M2 | `/spawn` and beacon homes | **Done** - builds, 90 unit + 26 game tests green |
+| M2 | `/spawn` and beacon homes | **Done** - builds, 90 unit + 28 game tests green |
 | M3 | Deepgates, normal network | Not started |
 | M4 | P2P pairs | Not started |
 

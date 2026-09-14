@@ -200,7 +200,8 @@ public final class Deepgate implements ModInitializer {
 
 		if (state.homeAt(player.getUUID(), player.level().dimension(), found.get().pos()).isPresent()) {
 			// Already one of their homes, so this is a destination picker rather than a naming screen.
-			HomeUi.openList(player);
+			// No chat copy: this was triggered by walking, not by asking.
+			HomeUi.openList(player, false);
 			return;
 		}
 

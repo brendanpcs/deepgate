@@ -152,31 +152,102 @@ public final class M2GameTests {
 		helper.succeed();
 	}
 
-	/** A home whose beacon is gone reports unavailable rather than deleting itself on read. */
-	@GameTest
-	public void aMissingBeaconMakesAHomeUnavailableWithoutDeletingIt(GameTestHelper helper) {
+	/**
+	 * A beacon that is really there reports available.
+	 *
+	 * <p>The positive case, which is where the bug hid: the lookup refused to read an unloaded chunk
+	 * and the caller turned that into "too far away", so a perfectly good home a short walk away was
+	 * reported unreachable.
+	 */
+	@GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 300, skyAccess = true)
+	public void aRealBeaconReportsAvailable(GameTestHelper helper) {
 		ServerPlayer player = helper.makeMockServerPlayerInLevel();
 		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
 
-		// Deliberately a position with no beacon on it.
+		// Floor to arrive on, with the beacon in the middle.
+		for (int dx = -3; dx <= 3; dx++) {
+			for (int dz = -3; dz <= 3; dz++) {
+				helper.setBlock(new BlockPos(5 + dx, 1, 5 + dz), Blocks.IRON_BLOCK);
+			}
+		}
+
+		BlockPos beaconRelative = new BlockPos(5, 2, 5);
+		helper.setBlock(beaconRelative, Blocks.BEACON);
+		BlockPos beacon = helper.absolutePos(beaconRelative);
+
+		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Live",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
+		state.add(home);
+
+		helper.runAfterDelay(120, () -> {
+			try {
+				HomeService.Availability availability =
+						Deepgate.homes().availability(player, home, rules(helper), true);
+
+				if (availability != HomeService.Availability.AVAILABLE) {
+					throw helper.assertionException("a real beacon should be available, got " + availability);
+				}
+
+				if (!availability.usable() || availability.worthReporting()) {
+					throw helper.assertionException("available should be usable and unremarkable");
+				}
+			} finally {
+				state.remove(home.id());
+			}
+
+			helper.succeed();
+		});
+	}
+
+	/** A beacon that is confirmed gone deletes the record and says so, per section 49. */
+	@GameTest
+	public void aConfirmedMissingBeaconDeletesTheRecord(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
+
+		// A loaded position with definitely no beacon on it.
 		BlockPos empty = helper.absolutePos(new BlockPos(6, 1, 6));
+		helper.setBlock(new BlockPos(6, 1, 6), Blocks.AIR);
+
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Ghost",
 				helper.getLevel().dimension(), empty, 0F, 0F, HomeRecord.WHITE);
 		state.add(home);
 
-		try {
-			HomeService.Availability availability = Deepgate.homes().availability(player, home, rules(helper));
+		HomeService.Availability availability =
+				Deepgate.homes().availability(player, home, rules(helper), true);
 
-			if (availability.usable()) {
-				throw helper.assertionException("a home with no beacon must not be usable");
-			}
-
-			// Reading must never delete: only an observed break does that (section 18).
-			if (state.home(home.id()).isEmpty()) {
-				throw helper.assertionException("checking availability must not delete the record");
-			}
-		} finally {
+		if (availability != HomeService.Availability.GONE) {
 			state.remove(home.id());
+			throw helper.assertionException("a loaded chunk with no beacon means gone, got " + availability);
+		}
+
+		if (state.home(home.id()).isPresent()) {
+			state.remove(home.id());
+			throw helper.assertionException("a confirmed missing beacon should delete the record");
+		}
+
+		helper.succeed();
+	}
+
+	/** Being unable to look is not the same as looking and finding nothing. */
+	@GameTest
+	public void anUnreadableBeaconIsUnknownAndStillOffersTravel(GameTestHelper helper) {
+		// Far outside any loaded chunk, so the cheap lookup cannot say anything.
+		BlockPos faraway = new BlockPos(6_000_000, 64, 6_000_000);
+
+		BeaconScan.Lookup lookup = BeaconScan.lookup(helper.getLevel(), faraway, false);
+
+		if (lookup.presence() != BeaconScan.Presence.UNKNOWN) {
+			throw helper.assertionException("an unloaded chunk should be unknown, got " + lookup.presence());
+		}
+
+		// Unknown must not block travel: distance is never a reason a home cannot be reached.
+		if (!HomeService.Availability.UNKNOWN.usable()) {
+			throw helper.assertionException("unknown must still offer travel");
+		}
+
+		if (HomeService.Availability.UNKNOWN.worthReporting()) {
+			throw helper.assertionException("unknown should not be shown as a problem");
 		}
 
 		helper.succeed();
