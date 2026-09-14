@@ -18,6 +18,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RespawnAnchorBlock;
 
@@ -341,6 +342,60 @@ public final class M2GameTests {
 		}
 
 		helper.succeed();
+	}
+
+	/**
+	 * Changing the glass over a beacon recolours the home, and the new colour is written back.
+	 *
+	 * <p>Reading live is what makes the name follow the beam; storing what was read is what keeps the
+	 * list right once the beacon is out of range.
+	 */
+	@GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 400, skyAccess = true)
+	public void theHomeColourFollowsTheBeam(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
+
+		BlockPos beaconRelative = buildBeacon(helper, 1, 1, 1);
+		BlockPos beacon = helper.absolutePos(beaconRelative);
+
+		// Deliberately store a colour the beacon does not have, to prove it gets corrected.
+		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Tinted",
+				helper.getLevel().dimension(), beacon, 0F, 0F, 0x123456);
+		state.add(home);
+
+		helper.runAfterDelay(80, () -> {
+			int plain = HomeService.beamColourOf(helper.getLevel().getServer(), home);
+
+			if (plain == 0x123456) {
+				throw helper.assertionException("a live beam should override the stored colour");
+			}
+
+			// The observation must be written back, not just returned.
+			HomeRecord stored = state.home(home.id())
+					.orElseThrow(() -> helper.assertionException("record vanished"));
+
+			if (stored.beamColour() != plain) {
+				throw helper.assertionException("expected the colour to be stored, got "
+						+ Integer.toHexString(stored.beamColour()));
+			}
+
+			// Now tint the beam and let the beacon rescan.
+			helper.setBlock(beaconRelative.above(2), Blocks.STAINED_GLASS.pick(DyeColor.RED));
+
+			helper.runAfterDelay(160, () -> {
+				HomeRecord current = state.home(home.id())
+						.orElseThrow(() -> helper.assertionException("record vanished"));
+				int tinted = HomeService.beamColourOf(helper.getLevel().getServer(), current);
+
+				if (tinted == plain) {
+					throw helper.assertionException("the colour should have followed the glass, still "
+							+ Integer.toHexString(tinted));
+				}
+
+				state.remove(home.id());
+				helper.succeed();
+			});
+		});
 	}
 
 	/** Arrival lands beside the beacon on solid ground, never in the beam column. */

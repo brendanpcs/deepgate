@@ -98,9 +98,11 @@ public final class HomeUi {
 					? home.name()
 					: home.name() + " (" + availability.description() + ")";
 
-			buttons.add(Dialogs.navigate(beamColoured(label, home), DETAIL, payload));
+			int colour = HomeService.beamColourOf(server, home);
 
-			player.sendSystemMessage(beamColoured("  " + label, home));
+			buttons.add(Dialogs.navigate(beamColoured(label, colour), DETAIL, payload));
+
+			player.sendSystemMessage(beamColoured("  " + label, colour));
 		}
 
 		Deepgate.dialogs().open(player, Dialogs.menu(
@@ -118,7 +120,7 @@ public final class HomeUi {
 		Optional<Destination> destination = HomeService.findArrival(player, home);
 
 		List<DialogBody> body = new ArrayList<>();
-		body.add(Dialogs.text(beamColoured("Name: " + home.name(), home)));
+		body.add(Dialogs.text(beamColoured("Name: " + home.name(), HomeService.beamColourOf(server, home))));
 		body.add(Dialogs.text("Dimension: " + home.dimension().identifier().getPath()));
 
 		if (destination.isPresent()) {
@@ -290,8 +292,8 @@ public final class HomeUi {
 	 * <p>The colour is whatever the beam actually ends up after any stained glass, including stacked
 	 * panes, so a home named in the list is recognisable as the beam you can see in the world.
 	 */
-	private static Component beamColoured(String text, HomeRecord home) {
-		return Component.literal(text).withStyle(style -> style.withColor(TextColor.fromRgb(home.beamColour())));
+	private static Component beamColoured(String text, int colour) {
+		return Component.literal(text).withStyle(style -> style.withColor(TextColor.fromRgb(colour)));
 	}
 
 	// ------------------------------------------------------------ helpers

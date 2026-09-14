@@ -80,7 +80,10 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 java {
-	withSourcesJar()
+	// No sources jar. It carries fabric.mod.json and deepgate.mixins.json but only .java files, so
+	// Fabric happily loads it as a mod and then dies with "mixin was not found". Sitting next to the
+	// real jar in build/libs, one word apart, it is purely a trap - and the source is on GitHub
+	// anyway. Re-enable with withSourcesJar() if this is ever published to a Maven repository.
 
 	sourceCompatibility = JavaVersion.VERSION_25
 	targetCompatibility = JavaVersion.VERSION_25

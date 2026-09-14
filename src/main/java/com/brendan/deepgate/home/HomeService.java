@@ -235,10 +235,6 @@ public final class HomeService {
 			return Availability.BEAM_BLOCKED;
 		}
 
-		// Remember the colour whenever the beacon is actually in front of us, so the home list stays
-		// the right colour even when the beacon is later unloaded.
-		refreshBeamColour(server, home, found.get().beacon());
-
 		if (findArrival(player, home).isEmpty()) {
 			return Availability.OBSTRUCTED;
 		}
@@ -246,14 +242,36 @@ public final class HomeService {
 		return Availability.AVAILABLE;
 	}
 
-	/** Store a freshly observed beam colour if it has changed. */
-	private static void refreshBeamColour(MinecraftServer server, HomeRecord home,
-			net.minecraft.world.level.block.entity.BeaconBlockEntity beacon) {
-		int colour = BeaconScan.beamColour(beacon);
+	/**
+	 * The colour to draw this home in, preferring what the beam looks like right now.
+	 *
+	 * <p>Read live whenever the beacon is loaded, so changing the glass over a beacon recolours the
+	 * name immediately rather than at some later refresh. The observed colour is written back, which
+	 * is what keeps the list correct later on when the beacon is too far away to read.
+	 *
+	 * <p>Falls back to the last colour seen when the beacon is unloaded - the best answer available,
+	 * and never a reason to claim the home has changed colour.
+	 */
+	public static int beamColourOf(MinecraftServer server, HomeRecord home) {
+		ServerLevel level = server.getLevel(home.dimension());
+
+		if (level == null) {
+			return home.beamColour();
+		}
+
+		Optional<BeaconScan.Found> found = BeaconScan.beaconAt(level, home.beacon());
+
+		if (found.isEmpty()) {
+			return home.beamColour();
+		}
+
+		int colour = BeaconScan.beamColour(found.get().beacon());
 
 		if (colour != home.beamColour()) {
 			DeepgateState.get(server).replace(home.withBeamColour(colour));
 		}
+
+		return colour;
 	}
 
 	/** Turn an unusable availability into the failure the teleport pipeline should report. */
