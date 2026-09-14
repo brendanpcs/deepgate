@@ -3,10 +3,10 @@ package com.brendan.deepgate.home;
 import java.util.List;
 import java.util.Optional;
 
+import com.brendan.deepgate.core.Chunks;
 import com.brendan.deepgate.mixin.BeaconBlockEntityAccessor;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.SectionPos;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -104,7 +104,7 @@ public final class BeaconScan {
 	 */
 	public static Lookup lookup(ServerLevel level, BlockPos pos, boolean forceLoad) {
 		if (forceLoad) {
-			loadAround(level, pos);
+			Chunks.loadAround(level, pos);
 		} else if (!level.isLoaded(pos)) {
 			return new Lookup(Presence.UNKNOWN, Optional.empty());
 		}
@@ -114,28 +114,6 @@ public final class BeaconScan {
 		}
 
 		return new Lookup(Presence.ABSENT, Optional.empty());
-	}
-
-	/**
-	 * Pull in the beacon chunk and its eight neighbours.
-	 *
-	 * <p>One chunk is not enough. The arrival search reaches several blocks out, so a beacon near a
-	 * chunk edge has candidate positions in the next chunk along; those would read as unloaded and be
-	 * skipped, and a home with plenty of room around it would refuse to place anyone. The pyramid
-	 * measurement reaches outwards too.
-	 *
-	 * <p>A three by three is the same shape vanilla loads around a portal or gateway destination, and
-	 * comfortably covers both.
-	 */
-	private static void loadAround(ServerLevel level, BlockPos pos) {
-		int chunkX = SectionPos.blockToSectionCoord(pos.getX());
-		int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
-
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dz = -1; dz <= 1; dz++) {
-				level.getChunk(chunkX + dx, chunkZ + dz);
-			}
-		}
 	}
 
 	/**

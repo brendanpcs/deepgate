@@ -42,8 +42,13 @@ public final class SpawnService {
 				implements Resolution {
 		}
 
-		/** No personal spawn is set, so world spawn it is. */
-		record World(Destination destination) implements Resolution {
+		/**
+		 * World spawn.
+		 *
+		 * @param afterFallback true when a personal spawn exists but could not be used, so the player
+		 *                      should be told why they did not arrive where they expected
+		 */
+		record World(Destination destination, boolean afterFallback) implements Resolution {
 		}
 
 		/** A personal spawn is set but cannot be used; section 11 says fail rather than fall back. */
@@ -105,14 +110,15 @@ public final class SpawnService {
 				false, TeleportTransition.DO_NOTHING);
 
 		if (transition.missingRespawnBlock()) {
-			// The block is still there but cannot be used - obstructed, or an anchor with no charge.
-			// Vanilla would quietly fall back to world spawn here; section 11 says /spawn must not.
-			// The wording Minecraft already uses when a respawn point cannot be honoured, so the
-			// message is one players recognise and it follows their language.
-			return new Resolution.Blocked(
-					Failure.translated(Failure.Reason.DESTINATION_INVALID, SPAWN_NOT_VALID,
-							"You have no home bed or charged respawn anchor, or it was obstructed"),
-					kind);
+			// The block is still there but cannot be used: obstructed, or an anchor with no charge.
+			// Vanilla has already pointed this transition at world spawn, so go there and say why.
+			// The record is kept - the bed still exists and may well work again later.
+			if (!crossDimensionAllowed(player, transition.newLevel(), rules)) {
+				return new Resolution.Unavailable(Failure.crossDimensionDisabled());
+			}
+
+			return new Resolution.World(new Destination(
+					transition.newLevel(), transition.position(), transition.yRot(), transition.xRot()), true);
 		}
 
 		if (!crossDimensionAllowed(player, transition.newLevel(), rules)) {
@@ -143,7 +149,7 @@ public final class SpawnService {
 				false, TeleportTransition.DO_NOTHING);
 
 		return new Resolution.World(new Destination(
-				transition.newLevel(), transition.position(), transition.yRot(), transition.xRot()));
+				transition.newLevel(), transition.position(), transition.yRot(), transition.xRot()), false);
 	}
 
 	/**

@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.brendan.deepgate.Deepgate;
 import com.brendan.deepgate.DeepgateRules;
+import com.brendan.deepgate.core.Chunks;
 import com.brendan.deepgate.core.Destination;
 import com.brendan.deepgate.core.Fare;
 import com.brendan.deepgate.core.Pricing;
@@ -16,6 +17,7 @@ import com.brendan.deepgate.core.XpAccount;
 import com.brendan.deepgate.core.XpCurve;
 import com.brendan.deepgate.dialog.DialogService;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -294,6 +296,36 @@ public final class M1GameTests {
 		assertTrue(helper, result instanceof TeleportService.Result.Success,
 				"a creative player with no experience must still travel, got " + result);
 		assertEquals(helper, 0, XpAccount.totalPoints(player), "nothing may be taken from a creative player");
+
+		helper.succeed();
+	}
+
+	/**
+	 * Every destination resolved from stored data loads its surroundings; a player target does not.
+	 *
+	 * <p>An unloaded chunk reads as air, so judging an arrival without loading it can pass a
+	 * collision test against a wall that was simply not there yet. That matters most for /back, which
+	 * restores a position that may be nowhere near anyone.
+	 */
+	@GameTest
+	public void storedDestinationsLoadTheirAreaAndPlayerTargetsDoNot(GameTestHelper helper) {
+		Vec3 somewhere = helper.absoluteVec(new Vec3(1.0D, 1.0D, 1.0D));
+
+		Destination stored = new Destination(helper.getLevel(), somewhere, 0.0F, 0.0F);
+
+		if (!stored.loadChunks()) {
+			throw helper.assertionException("a stored destination must load its area");
+		}
+
+		Destination atPlayer = Destination.atPlayer(helper.getLevel(), somewhere, 0.0F, 0.0F);
+
+		if (atPlayer.loadChunks()) {
+			throw helper.assertionException("a player target is already loaded and needs no fetching");
+		}
+
+		// Loading is idempotent and safe to ask for on an already loaded area.
+		Chunks.loadAround(helper.getLevel(), BlockPos.containing(somewhere));
+		Chunks.loadAround(helper.getLevel(), BlockPos.containing(somewhere));
 
 		helper.succeed();
 	}

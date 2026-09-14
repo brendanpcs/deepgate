@@ -208,7 +208,8 @@ public final class RequestService {
 
 		// The destination is wherever the anchoring player stands right now. Deepgate does not look
 		// for a nearby block: that player is standing there, so it is a place a player can stand.
-		Destination destination = new Destination(
+		// No chunk loading: the destination is wherever another player is standing, so it is loaded.
+		Destination destination = Destination.atPlayer(
 				anchor.level(), anchor.position(), anchor.getYRot(), anchor.getXRot());
 
 		Fare fare = Quotes.quote(mover, anchor, rules);

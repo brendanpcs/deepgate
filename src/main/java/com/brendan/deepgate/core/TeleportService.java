@@ -180,7 +180,10 @@ public final class TeleportService {
 	 */
 	public static boolean isArrivalClear(ServerPlayer player, Destination destination) {
 		ServerLevel level = destination.level();
-		level.getChunkAt(BlockPos.containing(destination.position()));
+
+		if (destination.loadChunks()) {
+			Chunks.loadAround(level, BlockPos.containing(destination.position()));
+		}
 
 		AABB box = player.getDimensions(player.getPose()).makeBoundingBox(destination.position());
 		return level.noCollision(player, box);

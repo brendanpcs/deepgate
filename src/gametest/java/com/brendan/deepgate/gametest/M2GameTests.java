@@ -631,9 +631,14 @@ public final class M2GameTests {
 		helper.succeed();
 	}
 
-	/** An anchor that still exists but has no charge fails rather than falling back (section 12). */
+	/**
+	 * An anchor with no charge falls back to world spawn and keeps its record.
+	 *
+	 * <p>Falling back matches what dying does. Keeping the record matters: an empty anchor is still
+	 * the configured personal spawn and works again the moment it is recharged.
+	 */
 	@GameTest
-	public void anEmptyAnchorBlocksSpawnRatherThanFallingBack(GameTestHelper helper) {
+	public void anEmptyAnchorFallsBackButStaysConfigured(GameTestHelper helper) {
 		ServerPlayer player = helper.makeMockServerPlayerInLevel();
 
 		BlockPos anchorRelative = new BlockPos(6, 2, 6);
@@ -646,13 +651,13 @@ public final class M2GameTests {
 
 		SpawnService.Resolution resolution = SpawnService.resolve(player, rules(helper));
 
-		if (!(resolution instanceof SpawnService.Resolution.Blocked blocked)) {
-			throw helper.assertionException("an empty anchor must block, got " + resolution);
+		if (!(resolution instanceof SpawnService.Resolution.World world)) {
+			throw helper.assertionException("an empty anchor should fall back to world spawn, got "
+					+ resolution);
 		}
 
-		if (!blocked.failure().message().contains("charge")) {
-			throw helper.assertionException("the reason should name the charge: "
-					+ blocked.failure().message());
+		if (!world.afterFallback()) {
+			throw helper.assertionException("the fallback should be flagged so the player is told why");
 		}
 
 		// It stays configured: an empty anchor is still the personal spawn (section 12).

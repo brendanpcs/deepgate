@@ -29,8 +29,8 @@ import net.minecraft.server.level.ServerPlayer;
  * The {@code /spawn} screen and its commit (spec sections 10 to 13).
  *
  * <p>The screen names the destination and, for a respawn anchor, its remaining charge. A bed or
- * anchor that cannot be used is reported as a failure: {@code /spawn} never falls through to world
- * spawn behind the back of the player.
+ * anchor that cannot be used falls back to world spawn, exactly as dying does, and the player is
+ * told why - the fallback is never silent.
  */
 public final class SpawnUi {
 	private static final Identifier TRAVEL = Deepgate.id("spawn/travel");
@@ -63,6 +63,10 @@ public final class SpawnUi {
 
 		List<DialogBody> body = new ArrayList<>();
 		body.add(Dialogs.text("Destination: " + SpawnService.describe(resolution)));
+
+		if (resolution instanceof SpawnService.Resolution.World world && world.afterFallback()) {
+			body.add(Dialogs.text("Your bed or anchor cannot be used right now."));
+		}
 
 		if (resolution instanceof SpawnService.Resolution.Personal personal) {
 			if (personal.kind() == SpawnService.Kind.BED && personal.bedColour() != null) {
@@ -135,6 +139,11 @@ public final class SpawnUi {
 		if (result instanceof TeleportService.Result.Failed failed) {
 			refuse(player, failed.failure());
 			return;
+		}
+
+		if (resolution instanceof SpawnService.Resolution.World world && world.afterFallback()) {
+			// Vanilla's own wording for a respawn point that exists but cannot be honoured.
+			player.sendSystemMessage(Component.translatable(SpawnService.SPAWN_NOT_VALID));
 		}
 
 		Feedback.teleported(player, SpawnService.describe(resolution),
