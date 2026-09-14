@@ -846,6 +846,51 @@ public final class M2GameTests {
 		helper.succeed();
 	}
 
+	/**
+	 * A beacon someone has already named offers that name to the next person who claims it.
+	 *
+	 * <p>A shared beacon is usually a shared landmark, so one place should not end up called
+	 * something different for every player who makes a home on it.
+	 */
+	@GameTest
+	public void asharedBeaconOffersTheNameItAlreadyHas(GameTestHelper helper) {
+		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
+		BlockPos beacon = helper.absolutePos(new BlockPos(11, 1, 11));
+		BlockPos other = helper.absolutePos(new BlockPos(13, 1, 13));
+
+		UUID first = UUID.randomUUID();
+		UUID second = UUID.randomUUID();
+
+		HomeRecord original = new HomeRecord(UUID.randomUUID(), first, "Market",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
+		state.add(original);
+
+		// A second player naming the same beacon differently must not change what is offered: the
+		// original claim is what everyone else is shown.
+		HomeRecord divergent = new HomeRecord(UUID.randomUUID(), second, "My Shop",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
+		state.add(divergent);
+
+		try {
+			String offered = state.firstHomeNameAt(helper.getLevel().dimension(), beacon)
+					.orElseThrow(() -> helper.assertionException("a claimed beacon should offer its name"));
+
+			if (!offered.equals("Market")) {
+				throw helper.assertionException("expected the original name, got " + offered);
+			}
+
+			// An unclaimed beacon offers nothing, so the field starts empty.
+			if (state.firstHomeNameAt(helper.getLevel().dimension(), other).isPresent()) {
+				throw helper.assertionException("an unclaimed beacon should offer no name");
+			}
+		} finally {
+			state.remove(original.id());
+			state.remove(divergent.id());
+		}
+
+		helper.succeed();
+	}
+
 	/** An anchor charge is spent on consume and handed back on rollback (section 12). */
 	@GameTest
 	public void anchorChargeIsSpentAndRestored(GameTestHelper helper) {

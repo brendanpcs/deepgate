@@ -89,6 +89,23 @@ public final class DeepgateState extends SavedData {
 				.findFirst();
 	}
 
+	/**
+	 * The name the first player to claim this beacon gave it, whoever they were.
+	 *
+	 * <p>A beacon can back a home for several players independently (section 14), and in practice a
+	 * shared beacon is a shared landmark - a market, a hub, someone's front door. Offering the
+	 * existing name to the next person who claims it means those homes agree with each other by
+	 * default, instead of one place quietly collecting a different name per player.
+	 *
+	 * <p>Records are held in creation order, so the first match is the original.
+	 */
+	public Optional<String> firstHomeNameAt(ResourceKey<Level> dimension, BlockPos beacon) {
+		return homes.stream()
+				.filter(home -> home.isAt(dimension, beacon))
+				.map(HomeRecord::name)
+				.findFirst();
+	}
+
 	public void add(HomeRecord home) {
 		homes.add(home);
 		setDirty();

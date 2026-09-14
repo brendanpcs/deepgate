@@ -171,12 +171,23 @@ public final class HomeUi {
 		payload.putString(KEY_BEACON, beacon.toShortString());
 		payload.putLong("beacon_packed", beacon.asLong());
 
+		// If someone already named this beacon, offer their name: a shared beacon is usually a shared
+		// landmark, and it should not end up called something different for every player who claims
+		// it. Still just a starting point - the field is editable.
+		Optional<String> existing = com.brendan.deepgate.state.DeepgateState.get(server)
+				.firstHomeNameAt(player.level().dimension(), beacon);
+
+		List<DialogBody> body = new ArrayList<>();
+		body.add(Dialogs.text("Name this beacon so you can return to it."));
+
+		existing.ifPresent(name -> body.add(Dialogs.text("Already known as " + name + ".")));
+
 		Deepgate.dialogs().open(player, Dialogs.textEntry(
 				"Set Home",
-				List.of(Dialogs.text("Name this beacon so you can return to it.")),
+				body,
 				KEY_NAME,
 				"Home name",
-				"",
+				existing.orElse(""),
 				HomeName.MAX_LENGTH,
 				Dialogs.commitWithInputs(Deepgate.dialogs(), player.getUUID(), tick,
 						Component.literal("Save"), SAVE, payload),
