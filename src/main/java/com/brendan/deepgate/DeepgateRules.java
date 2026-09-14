@@ -29,10 +29,13 @@ public final class DeepgateRules {
 	public static final GameRule<Integer> MAX_HOMES = intRule("max_homes", 10, 0, 100);
 	public static final GameRule<Integer> HOME_BEACON_LAYERS = intRule("home_beacon_layers", 1, 1, 4);
 	/** Prices carry their own unit: {@code /gamerule deepgate:xp_cost_per_1k 3 levels}. */
-	public static final GameRule<Cost> XP_COST_PER_1K =
-			CostGameRule.register("xp_cost_per_1k", new Cost(5, Cost.Unit.POINTS));
-	public static final GameRule<Cost> XP_CROSS_DIMENSION =
-			CostGameRule.register("xp_cross_dimension", new Cost(25, Cost.Unit.POINTS));
+	public static final Cost DEFAULT_COST_PER_1K = new Cost(5, Cost.Unit.POINTS);
+	public static final Cost DEFAULT_CROSS_DIMENSION = new Cost(25, Cost.Unit.POINTS);
+
+	public static final GameRule<String> XP_COST_PER_1K =
+			CostGameRule.register("xp_cost_per_1k", DEFAULT_COST_PER_1K);
+	public static final GameRule<String> XP_CROSS_DIMENSION =
+			CostGameRule.register("xp_cross_dimension", DEFAULT_CROSS_DIMENSION);
 	public static final GameRule<Integer> XP_FREE_DISTANCE = intRule("xp_free_distance", 1000, 0, 100_000_000);
 	public static final GameRule<Integer> BACK_WINDOW_SECONDS = intRule("back_window_seconds", 15, 0, 3600);
 	public static final GameRule<Integer> PORTAL_MAX_FRAME_BLOCKS = intRule("portal_max_frame_blocks", 64, 8, 4096);
@@ -83,8 +86,8 @@ public final class DeepgateRules {
 				rules.get(ALLOW_HOMES),
 				rules.get(MAX_HOMES),
 				rules.get(HOME_BEACON_LAYERS),
-				rules.get(XP_COST_PER_1K),
-				rules.get(XP_CROSS_DIMENSION),
+				CostGameRule.read(rules, XP_COST_PER_1K, DEFAULT_COST_PER_1K),
+				CostGameRule.read(rules, XP_CROSS_DIMENSION, DEFAULT_CROSS_DIMENSION),
 				rules.get(XP_FREE_DISTANCE),
 				rules.get(BACK_WINDOW_SECONDS),
 				rules.get(PORTAL_MAX_FRAME_BLOCKS));

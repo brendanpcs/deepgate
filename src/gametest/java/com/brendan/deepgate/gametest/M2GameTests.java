@@ -4,6 +4,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.brendan.deepgate.Deepgate;
+import com.brendan.deepgate.CostGameRule;
 import com.brendan.deepgate.DeepgateRules;
 import com.brendan.deepgate.core.Cost;
 import com.brendan.deepgate.core.RuleSnapshot;
@@ -663,53 +664,26 @@ public final class M2GameTests {
 	}
 
 	/**
-	 * The cost gamerules round trip through the command and through the world file.
+	 * Every command Deepgate registers can be sent to a joining client.
 	 *
-	 * <p>These rules carry a value vanilla has no type for, so this checks the two paths that would
-	 * break if the custom argument or codec were wrong: setting one, and serialising it.
+	 * <p>The command tree is serialised for each player who joins, and it may only contain argument
+	 * types the client already knows. A bespoke one makes the server unable to place the player at
+	 * all - the join dies with "Invalid player data" and the world will not load - and a vanilla
+	 * client needing nothing installed is the whole premise of this mod.
+	 *
+	 * <p>No ordinary game test caught that: mock players skip the join handshake, so the command tree
+	 * is never serialised. This calls the exact method {@code PlayerList} calls while placing a
+	 * player.
 	 */
 	@GameTest
-	public void costRulesAcceptAnAmountAndAUnit(GameTestHelper helper) {
-		GameRules rules = helper.getLevel().getServer().getGameRules();
-		Cost original = rules.get(DeepgateRules.XP_COST_PER_1K);
+	public void everyCommandCanBeSentToAJoiningClient(GameTestHelper helper) {
+		MinecraftServer server = helper.getLevel().getServer();
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
 
 		try {
-			rules.set(DeepgateRules.XP_COST_PER_1K, new Cost(3, Cost.Unit.LEVELS),
-					helper.getLevel().getServer());
-
-			Cost read = rules.get(DeepgateRules.XP_COST_PER_1K);
-
-			if (read.amount() != 3 || !read.inLevels()) {
-				throw helper.assertionException("expected 3 levels, got " + read);
-			}
-
-			// The text form is what the command takes and what the world file stores.
-			String serialised = DeepgateRules.XP_COST_PER_1K.serialize(read);
-
-			if (!serialised.equals("3 levels")) {
-				throw helper.assertionException("unexpected serialised form: " + serialised);
-			}
-
-			Cost parsed = DeepgateRules.XP_COST_PER_1K.deserialize(serialised).result()
-					.orElseThrow(() -> helper.assertionException("could not read back " + serialised));
-
-			if (!parsed.equals(read)) {
-				throw helper.assertionException("round trip changed the value: " + parsed);
-			}
-
-			// A bare number still works, and means points.
-			Cost bare = DeepgateRules.XP_COST_PER_1K.deserialize("7").result()
-					.orElseThrow(() -> helper.assertionException("a bare number should parse"));
-
-			if (bare.amount() != 7 || bare.inLevels()) {
-				throw helper.assertionException("a bare number should mean points, got " + bare);
-			}
-
-			if (DeepgateRules.XP_COST_PER_1K.deserialize("5 bananas").result().isPresent()) {
-				throw helper.assertionException("nonsense should not parse");
-			}
-		} finally {
-			rules.set(DeepgateRules.XP_COST_PER_1K, original, helper.getLevel().getServer());
+			server.getCommands().sendCommands(player);
+		} catch (RuntimeException e) {
+			throw helper.assertionException("the command tree cannot be sent to a client: " + e);
 		}
 
 		helper.succeed();
@@ -718,57 +692,61 @@ public final class M2GameTests {
 	/**
 	 * The real command path: {@code /gamerule deepgate:xp_cost_per_1k 3 levels}.
 	 *
-	 * <p>The value is two tokens, which is not how gamerules normally work, so this runs it through
-	 * the actual dispatcher rather than trusting the codec alone. A custom argument type consuming
-	 * the unit after the number is the part that would quietly fail.
+	 * <p>Run through the actual dispatcher rather than trusting the parser alone, because the value
+	 * is two tokens and that is not how gamerules normally work.
 	 */
 	@GameTest
 	public void theGameruleCommandAcceptsAnAmountAndAUnit(GameTestHelper helper) {
 		MinecraftServer server = helper.getLevel().getServer();
 		GameRules rules = server.getGameRules();
-		Cost original = rules.get(DeepgateRules.XP_COST_PER_1K);
+		String original = rules.get(DeepgateRules.XP_COST_PER_1K);
 
 		try {
 			server.getCommands().performPrefixedCommand(
 					server.createCommandSourceStack(), "gamerule deepgate:xp_cost_per_1k 3 levels");
 
-			Cost afterLevels = rules.get(DeepgateRules.XP_COST_PER_1K);
+			Cost levels = read(rules);
 
-			if (afterLevels.amount() != 3 || !afterLevels.inLevels()) {
-				throw helper.assertionException("the command should have set 3 levels, got " + afterLevels);
+			if (levels.amount() != 3 || !levels.inLevels()) {
+				throw helper.assertionException("expected 3 levels, got " + levels);
 			}
 
 			server.getCommands().performPrefixedCommand(
 					server.createCommandSourceStack(), "gamerule deepgate:xp_cost_per_1k 8 points");
 
-			Cost afterPoints = rules.get(DeepgateRules.XP_COST_PER_1K);
+			Cost points = read(rules);
 
-			if (afterPoints.amount() != 8 || afterPoints.inLevels()) {
-				throw helper.assertionException("the command should have set 8 points, got " + afterPoints);
+			if (points.amount() != 8 || points.inLevels()) {
+				throw helper.assertionException("expected 8 points, got " + points);
 			}
 
 			// A bare number is accepted and means points.
 			server.getCommands().performPrefixedCommand(
 					server.createCommandSourceStack(), "gamerule deepgate:xp_cost_per_1k 4");
 
-			Cost bare = rules.get(DeepgateRules.XP_COST_PER_1K);
+			Cost bare = read(rules);
 
 			if (bare.amount() != 4 || bare.inLevels()) {
 				throw helper.assertionException("a bare number should mean points, got " + bare);
 			}
 
-			// A bad unit must be refused, leaving the previous value alone.
+			// Nonsense cannot be rejected at the point of typing with a vanilla argument type, so it
+			// must not break pricing either: it falls back to the default.
 			server.getCommands().performPrefixedCommand(
 					server.createCommandSourceStack(), "gamerule deepgate:xp_cost_per_1k 9 bananas");
 
-			if (!rules.get(DeepgateRules.XP_COST_PER_1K).equals(bare)) {
-				throw helper.assertionException("a rejected command must not change the rule");
+			if (!read(rules).equals(DeepgateRules.DEFAULT_COST_PER_1K)) {
+				throw helper.assertionException("nonsense should price at the default, got " + read(rules));
 			}
 		} finally {
 			rules.set(DeepgateRules.XP_COST_PER_1K, original, server);
 		}
 
 		helper.succeed();
+	}
+
+	private static Cost read(GameRules rules) {
+		return CostGameRule.read(rules, DeepgateRules.XP_COST_PER_1K, DeepgateRules.DEFAULT_COST_PER_1K);
 	}
 
 	/** Experience is stripped on death when the rule is on, even with keepInventory. */

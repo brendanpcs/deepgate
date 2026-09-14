@@ -1,131 +1,85 @@
 package com.brendan.deepgate;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-
 import com.brendan.deepgate.core.Cost;
 
-import com.mojang.brigadier.StringReader;
-import com.mojang.brigadier.arguments.ArgumentType;
-import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
-import com.mojang.brigadier.suggestion.Suggestions;
-import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.level.gamerules.GameRule;
 import net.minecraft.world.level.gamerules.GameRuleCategory;
 import net.minecraft.world.level.gamerules.GameRuleType;
 import net.minecraft.world.level.gamerules.GameRuleTypeVisitor;
+import net.minecraft.world.level.gamerules.GameRules;
 
 /**
- * Registers gamerules whose value is an amount plus a unit, written {@code 5 points} or
- * {@code 3 levels}.
+ * Gamerules whose value is an amount plus a unit, written {@code 5 points} or {@code 3 levels}.
  *
- * <p>Vanilla gamerules are single valued, and {@code GameRuleType} only knows BOOL and INT - but the
- * rule itself is generic over its value type, and the visitor interface has a generic
- * {@code visit} alongside the typed ones. That is the same seam Fabric uses for its own double and
- * enum rules, which likewise declare INT while carrying something else.
+ * <p>The value is carried as a plain string and parsed on read. That looks indirect, and it is
+ * deliberate: the command tree is serialised to every client that joins, and a vanilla client can
+ * only be sent argument types it already knows. A bespoke argument type makes the server unable to
+ * place a player at all - the join fails with "Invalid player data" - which is precisely the
+ * breakage Deepgate exists to avoid, since a vanilla client must need nothing installed.
  *
- * <p>Two tokens fit in one gamerule argument because Brigadier hands the argument type the whole
- * reader, so it can consume the unit after the number. A bare number is accepted and means points.
+ * <p>So the argument is {@link StringArgumentType#greedyString()}, which is vanilla and consumes the
+ * rest of the line, giving room for both tokens. The cost of that choice is no tab completion for
+ * the unit, and a typo being accepted by the command rather than rejected at the point of typing;
+ * {@link #read} handles that by falling back and saying so in the log.
  *
- * <p>Fabric's {@code GameRuleBuilder} only exposes boolean, integer, double and enum, so this builds
- * the rule directly rather than going through it.
+ * <p>Fabric's {@code GameRuleBuilder} only exposes boolean, integer, double and enum, so the rule is
+ * built directly. The generic {@code visit} on the visitor is what keeps a non-integer value safe
+ * despite the rule declaring INT, which is all vanilla offers.
  */
 public final class CostGameRule {
-	private static final DynamicCommandExceptionType INVALID = new DynamicCommandExceptionType(
-			value -> Component.literal("Expected an amount and a unit, such as \"5 points\" or \"3 levels\", got "
-					+ value));
-
-	/** Encodes as the same text the command takes, so the world file stays readable. */
-	private static final Codec<Cost> CODEC = Codec.STRING.comapFlatMap(
-			raw -> Cost.parse(raw)
-					.map(DataResult::success)
-					.orElseGet(() -> DataResult.error(() -> "Not a valid cost: " + raw)),
-			Cost::toString);
-
 	private CostGameRule() {
 	}
 
-	/** Register a cost rule and return it. */
-	public static GameRule<Cost> register(String path, Cost defaultValue) {
-		GameRule<Cost> rule = new GameRule<>(
+	/** Register a cost rule, storing its value as the same text the command takes. */
+	public static GameRule<String> register(String path, Cost defaultValue) {
+		GameRule<String> rule = new GameRule<>(
 				GameRuleCategory.MISC,
-				// Declared INT because that is all vanilla offers; the generic visitor below is what
-				// keeps the real type safe, so nothing ever casts this to an Integer.
 				GameRuleType.INT,
-				new CostArgument(),
+				// Vanilla argument type: anything else cannot be sent to a vanilla client.
+				StringArgumentType.greedyString(),
 				GameRuleTypeVisitor::visit,
-				CODEC,
-				cost -> cost.amount(),
-				defaultValue,
+				Codec.STRING,
+				CostGameRule::commandResult,
+				defaultValue.toString(),
 				FeatureFlagSet.of());
 
 		return Registry.register(BuiltInRegistries.GAME_RULE, Deepgate.id(path), rule);
 	}
 
-	/** Reads "5 points", "3 levels", or a bare "5". */
-	private static final class CostArgument implements ArgumentType<Cost> {
-		@Override
-		public Cost parse(StringReader reader) throws CommandSyntaxException {
-			int start = reader.getCursor();
-			int amount = reader.readInt();
+	/**
+	 * Read a cost rule, falling back when the stored text is not a valid cost.
+	 *
+	 * <p>Nothing stops an operator typing nonsense, so a bad value must not break pricing. The
+	 * fallback is the rule default, and the reason is logged once per read so it is discoverable.
+	 */
+	public static Cost read(GameRules rules, GameRule<String> rule, Cost fallback) {
+		String raw = rules.get(rule);
 
-			if (amount < 0) {
-				reader.setCursor(start);
-				throw INVALID.createWithContext(reader, amount);
-			}
+		return Cost.parse(raw).orElseGet(() -> {
+			Deepgate.LOGGER.warn(
+					"Gamerule {} is set to \"{}\", which is not an amount and a unit such as \"5 points\" "
+							+ "or \"3 levels\". Using {} instead.",
+					rule.getIdentifier(), raw, fallback);
+			return fallback;
+		});
+	}
 
-			if (!reader.canRead() || reader.peek() != ' ') {
-				// A bare number is allowed and means points.
-				return new Cost(amount, Cost.Unit.POINTS);
-			}
+	/** The command result is the amount, so {@code /gamerule} reports something meaningful. */
+	private static int commandResult(String raw) {
+		return Cost.parse(raw).map(Cost::amount).orElse(0);
+	}
 
-			reader.skip();
-			String word = reader.readUnquotedString();
-			Optional<Cost.Unit> unit = Cost.Unit.parse(word);
-
-			if (unit.isEmpty()) {
-				reader.setCursor(start);
-				throw INVALID.createWithContext(reader, word);
-			}
-
-			return new Cost(amount, unit.get());
-		}
-
-		@Override
-		public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context,
-				SuggestionsBuilder builder) {
-			String remaining = builder.getRemaining();
-			int space = remaining.indexOf(' ');
-
-			if (space < 0) {
-				// Still typing the number; nothing useful to offer yet.
-				return Suggestions.empty();
-			}
-
-			SuggestionsBuilder units = builder.createOffset(builder.getStart() + space + 1);
-
-			for (Cost.Unit unit : Cost.Unit.values()) {
-				units.suggest(unit.label());
-			}
-
-			return units.buildFuture();
-		}
-
-		@Override
-		public Collection<String> getExamples() {
-			return List.of("5", "5 points", "3 levels");
-		}
+	/** Validation helper for anything that wants to check a value before storing it. */
+	public static DataResult<Cost> validate(String raw) {
+		return Cost.parse(raw)
+				.map(DataResult::success)
+				.orElseGet(() -> DataResult.error(() -> "Not a valid cost: " + raw));
 	}
 }
