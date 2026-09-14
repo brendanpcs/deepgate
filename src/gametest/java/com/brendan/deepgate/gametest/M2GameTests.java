@@ -257,6 +257,91 @@ public final class M2GameTests {
 		helper.succeed();
 	}
 
+	/**
+	 * Standing in a beam never reopens the screen; only leaving and returning does (section 15).
+	 *
+	 * <p>This is what stops a player who closes the Set Home screen from being soft locked, unable to
+	 * walk out of the beam because the screen keeps coming back on the next check.
+	 */
+	@GameTest
+	public void theBeamPromptIsEdgeTriggeredSoClosingItDoesNotSoftLock(GameTestHelper helper) {
+		HomeService homes = Deepgate.homes();
+		UUID player = UUID.randomUUID();
+		BlockPos beacon = helper.absolutePos(new BlockPos(4, 1, 4));
+
+		try {
+			if (!homes.enterBeam(player, beacon)) {
+				throw helper.assertionException("the first entry should open the screen");
+			}
+
+			// Every later check while standing in the same beam must do nothing at all.
+			for (int tick = 0; tick < 50; tick++) {
+				if (homes.enterBeam(player, beacon)) {
+					throw helper.assertionException("the screen reopened while standing still");
+				}
+			}
+
+			if (!homes.isInBeam(player)) {
+				throw helper.assertionException("the player should still be tracked as in the beam");
+			}
+
+			// Stepping out rearms it.
+			homes.leaveBeam(player);
+
+			if (homes.isInBeam(player)) {
+				throw helper.assertionException("leaving should clear the beam state");
+			}
+
+			if (!homes.enterBeam(player, beacon)) {
+				throw helper.assertionException("re-entering should open the screen again");
+			}
+
+			// Walking straight from one beacon into another counts as a fresh entry.
+			BlockPos other = helper.absolutePos(new BlockPos(9, 1, 9));
+
+			if (!homes.enterBeam(player, other)) {
+				throw helper.assertionException("a different beacon should open its own screen");
+			}
+		} finally {
+			homes.leaveBeam(player);
+		}
+
+		helper.succeed();
+	}
+
+	/** At the limit, the beam reports it rather than silently doing nothing (section 15). */
+	@GameTest
+	public void hittingTheHomeLimitReportsItWithTheCount(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
+		RuleSnapshot rules = rules(helper);
+		BlockPos beacon = helper.absolutePos(new BlockPos(10, 1, 10));
+
+		for (int i = 0; i < rules.maxHomes(); i++) {
+			state.add(new HomeRecord(UUID.randomUUID(), player.getUUID(), "Full" + i,
+					helper.getLevel().dimension(), beacon, 0F, 0F));
+		}
+
+		try {
+			String message = Deepgate.homes().cannotCreate(player, rules)
+					.orElseThrow(() -> helper.assertionException("expected the limit to be reported"));
+
+			if (!message.startsWith("Home limit reached")) {
+				throw helper.assertionException("unexpected wording: " + message);
+			}
+
+			if (!message.endsWith(rules.maxHomes() + "/" + rules.maxHomes())) {
+				throw helper.assertionException("the count should read n/max, got: " + message);
+			}
+		} finally {
+			for (HomeRecord home : Deepgate.homes().homesOf(player)) {
+				state.remove(home.id());
+			}
+		}
+
+		helper.succeed();
+	}
+
 	/** An anchor charge is spent on consume and handed back on rollback (section 12). */
 	@GameTest
 	public void anchorChargeIsSpentAndRestored(GameTestHelper helper) {

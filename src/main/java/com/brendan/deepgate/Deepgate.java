@@ -195,7 +195,11 @@ public final class Deepgate implements ModInitializer {
 		var blocked = HOMES.cannotCreate(player, rules);
 
 		if (blocked.isPresent()) {
+			// Shown as a screen, the same as the other two beam outcomes, so walking into a beam always
+			// tells you where you stand. Chat carries it too, so it is readable without a client.
 			player.sendSystemMessage(Component.literal(blocked.get()));
+			DIALOGS.open(player, com.brendan.deepgate.dialog.Dialogs.notice(blocked.get(),
+					"Delete a home from /home to make room for a new one."));
 			return;
 		}
 

@@ -236,7 +236,7 @@ public final class HomeService {
 		int owned = homesOf(player).size();
 
 		if (owned >= rules.maxHomes()) {
-			return Optional.of("Home limit reached - " + owned + "/" + rules.maxHomes());
+			return Optional.of("Home limit reached — " + owned + "/" + rules.maxHomes());
 		}
 
 		return Optional.empty();
