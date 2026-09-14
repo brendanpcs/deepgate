@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.brendan.deepgate.Deepgate;
 import com.brendan.deepgate.DeepgateRules;
 import com.brendan.deepgate.core.RuleSnapshot;
+import com.brendan.deepgate.home.ArrivalSearch;
 import com.brendan.deepgate.home.BeaconScan;
 import com.brendan.deepgate.home.HomeName;
 import com.brendan.deepgate.home.HomeRecord;
@@ -83,7 +84,7 @@ public final class M2GameTests {
 		BlockPos beacon = helper.absolutePos(new BlockPos(2, 1, 2));
 
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), owner, "Workshop",
-				helper.getLevel().dimension(), beacon, 0.0F, 0.0F);
+				helper.getLevel().dimension(), beacon, 0.0F, 0.0F, HomeRecord.WHITE);
 		state.add(home);
 
 		try {
@@ -124,11 +125,11 @@ public final class M2GameTests {
 		UUID alice = UUID.randomUUID();
 		UUID bob = UUID.randomUUID();
 
-		state.add(new HomeRecord(UUID.randomUUID(), alice, "A", level.dimension(), beacon, 0F, 0F));
-		state.add(new HomeRecord(UUID.randomUUID(), bob, "B", level.dimension(), beacon, 0F, 0F));
+		state.add(new HomeRecord(UUID.randomUUID(), alice, "A", level.dimension(), beacon, 0F, 0F, HomeRecord.WHITE));
+		state.add(new HomeRecord(UUID.randomUUID(), bob, "B", level.dimension(), beacon, 0F, 0F, HomeRecord.WHITE));
 		// A home on a different beacon must be left alone.
 		BlockPos elsewhere = helper.absolutePos(new BlockPos(5, 1, 5));
-		HomeRecord survivor = new HomeRecord(UUID.randomUUID(), alice, "C", level.dimension(), elsewhere, 0F, 0F);
+		HomeRecord survivor = new HomeRecord(UUID.randomUUID(), alice, "C", level.dimension(), elsewhere, 0F, 0F, HomeRecord.WHITE);
 		state.add(survivor);
 
 		try {
@@ -157,7 +158,7 @@ public final class M2GameTests {
 		// Deliberately a position with no beacon on it.
 		BlockPos empty = helper.absolutePos(new BlockPos(6, 1, 6));
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Ghost",
-				helper.getLevel().dimension(), empty, 0F, 0F);
+				helper.getLevel().dimension(), empty, 0F, 0F, HomeRecord.WHITE);
 		state.add(home);
 
 		try {
@@ -189,7 +190,7 @@ public final class M2GameTests {
 
 		for (int i = 0; i < rules.maxHomes(); i++) {
 			state.add(new HomeRecord(UUID.randomUUID(), player.getUUID(), "Home" + i,
-					helper.getLevel().dimension(), beacon, 0F, 0F));
+					helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE));
 		}
 
 		try {
@@ -224,9 +225,9 @@ public final class M2GameTests {
 		BlockPos beacon = helper.absolutePos(new BlockPos(8, 1, 8));
 
 		HomeRecord first = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Alpha",
-				helper.getLevel().dimension(), beacon, 0F, 0F);
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
 		HomeRecord second = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Beta",
-				helper.getLevel().dimension(), beacon, 0F, 0F);
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
 		state.add(first);
 		state.add(second);
 
@@ -319,7 +320,7 @@ public final class M2GameTests {
 
 		for (int i = 0; i < rules.maxHomes(); i++) {
 			state.add(new HomeRecord(UUID.randomUUID(), player.getUUID(), "Full" + i,
-					helper.getLevel().dimension(), beacon, 0F, 0F));
+					helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE));
 		}
 
 		try {
@@ -337,6 +338,92 @@ public final class M2GameTests {
 			for (HomeRecord home : Deepgate.homes().homesOf(player)) {
 				state.remove(home.id());
 			}
+		}
+
+		helper.succeed();
+	}
+
+	/** Arrival lands beside the beacon on solid ground, never in the beam column. */
+	@GameTest
+	public void arrivalLandsBesideTheBeaconNotInTheBeam(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
+
+		// A floor to stand on, with the beacon sitting in the middle of it.
+		for (int dx = -3; dx <= 3; dx++) {
+			for (int dz = -3; dz <= 3; dz++) {
+				helper.setBlock(new BlockPos(5 + dx, 1, 5 + dz), Blocks.STONE);
+			}
+		}
+
+		BlockPos beaconRelative = new BlockPos(5, 2, 5);
+		helper.setBlock(beaconRelative, Blocks.BEACON);
+		BlockPos beacon = helper.absolutePos(beaconRelative);
+
+		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Beside",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
+		state.add(home);
+
+		try {
+			var arrival = HomeService.findArrival(player, home);
+
+			if (arrival.isEmpty()) {
+				throw helper.assertionException("expected a spot beside the beacon");
+			}
+
+			BlockPos landed = BlockPos.containing(arrival.get().position());
+
+			if (landed.getX() == beacon.getX() && landed.getZ() == beacon.getZ()) {
+				throw helper.assertionException("arrival must not be in the beam column, landed at " + landed);
+			}
+
+			int dx = landed.getX() - beacon.getX();
+			int dz = landed.getZ() - beacon.getZ();
+
+			if (dx * dx + dz * dz > ArrivalSearch.RADIUS * ArrivalSearch.RADIUS) {
+				throw helper.assertionException("arrival is outside the radius, landed at " + landed);
+			}
+
+			// Bed-like: something solid underfoot rather than a drop.
+			if (!helper.getLevel().getBlockState(landed.below()).blocksMotion()) {
+				throw helper.assertionException("arrival should have solid ground beneath it");
+			}
+		} finally {
+			state.remove(home.id());
+		}
+
+		helper.succeed();
+	}
+
+	/** A beacon boxed in on every side has nowhere to put a player, so the home is unavailable. */
+	@GameTest
+	public void aWalledInBeaconHasNoArrival(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
+
+		// Fill the whole search volume with stone so nothing can fit.
+		for (int dx = -4; dx <= 4; dx++) {
+			for (int dz = -4; dz <= 4; dz++) {
+				for (int dy = 0; dy <= 5; dy++) {
+					helper.setBlock(new BlockPos(5 + dx, 1 + dy, 5 + dz), Blocks.STONE);
+				}
+			}
+		}
+
+		BlockPos beaconRelative = new BlockPos(5, 2, 5);
+		helper.setBlock(beaconRelative, Blocks.BEACON);
+		BlockPos beacon = helper.absolutePos(beaconRelative);
+
+		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Boxed",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
+		state.add(home);
+
+		try {
+			if (HomeService.findArrival(player, home).isPresent()) {
+				throw helper.assertionException("a fully enclosed beacon should have no arrival");
+			}
+		} finally {
+			state.remove(home.id());
 		}
 
 		helper.succeed();

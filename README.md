@@ -31,8 +31,8 @@ Three automated layers, plus a manual pass. Each acceptance criterion goes to th
 actually test it, rather than being forced into an awkward game test.
 
 ```bash
-./gradlew test          # pure JUnit, no Minecraft needed  (81 tests)
-./gradlew runGametest   # world-dependent behaviour        (20 tests)
+./gradlew test          # pure JUnit, no Minecraft needed  (90 tests)
+./gradlew runGametest   # world-dependent behaviour        (22 tests)
 ./gradlew runServer     # boot a dev server by hand
 ```
 
@@ -53,7 +53,7 @@ grep -rL "import net.minecraft" src/main/java --include='*.java'
 | Milestone | Scope | State |
 | --- | --- | --- |
 | M1 | Gamerules, pricing, experience, combat, `/back`, dialogs, TPA | **Done** - server boots, mixin applies, playtested |
-| M2 | `/spawn` and beacon homes | **Done** - builds, 81 unit + 20 game tests green |
+| M2 | `/spawn` and beacon homes | **Done** - builds, 90 unit + 22 game tests green |
 | M3 | Deepgates, normal network | Not started |
 | M4 | P2P pairs | Not started |
 

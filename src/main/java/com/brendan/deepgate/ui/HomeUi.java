@@ -22,6 +22,7 @@ import com.brendan.deepgate.home.HomeService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.dialog.ActionButton;
@@ -97,9 +98,9 @@ public final class HomeUi {
 					? home.name()
 					: home.name() + " (" + availability.description() + ")";
 
-			buttons.add(Dialogs.navigate(Component.literal(label), DETAIL, payload));
+			buttons.add(Dialogs.navigate(beamColoured(label, home), DETAIL, payload));
 
-			player.sendSystemMessage(Component.literal("  " + label));
+			player.sendSystemMessage(beamColoured("  " + label, home));
 		}
 
 		Deepgate.dialogs().open(player, Dialogs.menu(
@@ -114,10 +115,10 @@ public final class HomeUi {
 		long tick = server.getTickCount();
 
 		HomeService.Availability availability = Deepgate.homes().availability(player, home, rules);
-		Optional<Destination> destination = HomeService.destinationOf(server, home);
+		Optional<Destination> destination = HomeService.findArrival(player, home);
 
 		List<DialogBody> body = new ArrayList<>();
-		body.add(Dialogs.text("Name: " + home.name()));
+		body.add(Dialogs.text(beamColoured("Name: " + home.name(), home)));
 		body.add(Dialogs.text("Dimension: " + home.dimension().identifier().getPath()));
 
 		if (destination.isPresent()) {
@@ -262,7 +263,7 @@ public final class HomeUi {
 			return;
 		}
 
-		Optional<Destination> destination = HomeService.destinationOf(server, home);
+		Optional<Destination> destination = HomeService.findArrival(player, home);
 
 		if (destination.isEmpty()) {
 			Feedback.refused(player,
@@ -281,6 +282,16 @@ public final class HomeUi {
 		}
 
 		Feedback.teleported(player, home.name(), ((TeleportService.Result.Success) result).pointsCharged());
+	}
+
+	/**
+	 * Text tinted to match the beam of the beacon.
+	 *
+	 * <p>The colour is whatever the beam actually ends up after any stained glass, including stacked
+	 * panes, so a home named in the list is recognisable as the beam you can see in the world.
+	 */
+	private static Component beamColoured(String text, HomeRecord home) {
+		return Component.literal(text).withStyle(style -> style.withColor(TextColor.fromRgb(home.beamColour())));
 	}
 
 	// ------------------------------------------------------------ helpers

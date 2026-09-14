@@ -1,5 +1,6 @@
 package com.brendan.deepgate.home;
 
+import java.util.List;
 import java.util.Optional;
 
 import com.brendan.deepgate.mixin.BeaconBlockEntityAccessor;
@@ -7,6 +8,7 @@ import com.brendan.deepgate.mixin.BeaconBlockEntityAccessor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.entity.BeaconBeamOwner;
 import net.minecraft.world.level.block.entity.BeaconBlockEntity;
 
 /**
@@ -95,5 +97,24 @@ public final class BeaconScan {
 	 */
 	public static boolean hasBeam(BeaconBlockEntity beacon) {
 		return !beacon.getBeamSections().isEmpty();
+	}
+
+	/**
+	 * The colour the beam ends up, after every pane of stained glass it passes through.
+	 *
+	 * <p>Vanilla starts a new beam section each time the colour changes and blends the new glass into
+	 * the running colour, so stacking two different glasses gives a mixed result. Reading the topmost
+	 * section therefore picks up custom colours and stacking for free, with no colour maths here.
+	 *
+	 * @return packed RGB, white when the beacon has no beam
+	 */
+	public static int beamColour(BeaconBlockEntity beacon) {
+		List<BeaconBeamOwner.Section> sections = beacon.getBeamSections();
+
+		if (sections.isEmpty()) {
+			return HomeRecord.WHITE;
+		}
+
+		return sections.get(sections.size() - 1).getColor() & 0xFFFFFF;
 	}
 }

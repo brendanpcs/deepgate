@@ -82,7 +82,7 @@ public final class HomeService {
 		PYRAMID_TOO_SMALL("Beacon pyramid is too small"),
 		BEAM_BLOCKED("Beacon beam is blocked"),
 		CROSS_DIMENSION_DISABLED("In another dimension"),
-		OBSTRUCTED("Arrival is obstructed"),
+		OBSTRUCTED("No room to arrive near the beacon"),
 		UNLOADED("Too far away to check");
 
 		private final String description;
@@ -141,22 +141,59 @@ public final class HomeService {
 	}
 
 	/**
-	 * Where a home puts you: centred on top of its beacon (section 17).
+	 * Where a home puts you: the nearest spot you can stand beside the beacon.
 	 *
-	 * <p>Fixed, never searched for. If a block is in the way the travel fails rather than sliding the
-	 * player somewhere approximate.
+	 * <p>Placement works like a bed rather than a coordinate: the beam column itself is skipped, and
+	 * the search walks outwards to {@link ArrivalSearch#RADIUS} blocks, nearest first, taking the
+	 * first position where the player actually fits on solid ground. Ordering is fixed, so the same
+	 * beacon always puts you in the same place.
+	 *
+	 * <p>Landing in the beam would reopen the home screen the instant you arrived, which is why the
+	 * column is excluded rather than merely deprioritised.
+	 *
+	 * @return the arrival, or empty when nothing within range can hold a player
 	 */
-	public static Optional<Destination> destinationOf(MinecraftServer server, HomeRecord home) {
+	public static Optional<Destination> findArrival(ServerPlayer player, HomeRecord home) {
+		MinecraftServer server = player.level().getServer();
 		ServerLevel level = server.getLevel(home.dimension());
 
 		if (level == null) {
 			return Optional.empty();
 		}
 
-		BlockPos beacon = home.beacon();
-		Vec3 position = new Vec3(beacon.getX() + 0.5D, beacon.getY() + 1, beacon.getZ() + 0.5D);
+		BlockPos top = home.beacon().above();
 
-		return Optional.of(new Destination(level, position, home.yaw(), home.pitch()));
+		if (!level.isLoaded(top)) {
+			return Optional.empty();
+		}
+
+		for (ArrivalSearch.Offset offset : ArrivalSearch.candidates()) {
+			BlockPos candidate = top.offset(offset.dx(), offset.dy(), offset.dz());
+
+			if (!level.isLoaded(candidate)) {
+				continue;
+			}
+
+			Vec3 position = new Vec3(candidate.getX() + 0.5D, candidate.getY(), candidate.getZ() + 0.5D);
+			Destination destination = new Destination(level, position, home.yaw(), home.pitch());
+
+			if (canStandAt(player, level, candidate, destination)) {
+				return Optional.of(destination);
+			}
+		}
+
+		return Optional.empty();
+	}
+
+	/** Whether a player fits here with something solid under their feet. */
+	private static boolean canStandAt(ServerPlayer player, ServerLevel level, BlockPos pos,
+			Destination destination) {
+		// Something to stand on, so arriving never drops the player into a hole or onto water.
+		if (!level.getBlockState(pos.below()).blocksMotion()) {
+			return false;
+		}
+
+		return com.brendan.deepgate.core.TeleportService.isArrivalClear(player, destination);
 	}
 
 	/**
@@ -198,17 +235,25 @@ public final class HomeService {
 			return Availability.BEAM_BLOCKED;
 		}
 
-		Optional<Destination> destination = destinationOf(server, home);
+		// Remember the colour whenever the beacon is actually in front of us, so the home list stays
+		// the right colour even when the beacon is later unloaded.
+		refreshBeamColour(server, home, found.get().beacon());
 
-		if (destination.isEmpty()) {
-			return Availability.UNLOADED;
-		}
-
-		if (!com.brendan.deepgate.core.TeleportService.isArrivalClear(player, destination.get())) {
+		if (findArrival(player, home).isEmpty()) {
 			return Availability.OBSTRUCTED;
 		}
 
 		return Availability.AVAILABLE;
+	}
+
+	/** Store a freshly observed beam colour if it has changed. */
+	private static void refreshBeamColour(MinecraftServer server, HomeRecord home,
+			net.minecraft.world.level.block.entity.BeaconBlockEntity beacon) {
+		int colour = BeaconScan.beamColour(beacon);
+
+		if (colour != home.beamColour()) {
+			DeepgateState.get(server).replace(home.withBeamColour(colour));
+		}
 	}
 
 	/** Turn an unusable availability into the failure the teleport pipeline should report. */
@@ -272,7 +317,10 @@ public final class HomeService {
 				player.level().dimension(),
 				beacon,
 				facing.yaw(),
-				facing.pitch()));
+				facing.pitch(),
+				BeaconScan.beaconAt(player.level(), beacon)
+						.map(found -> BeaconScan.beamColour(found.beacon()))
+						.orElse(HomeRecord.WHITE)));
 
 		return validation;
 	}

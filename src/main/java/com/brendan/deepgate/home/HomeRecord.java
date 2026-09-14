@@ -27,7 +27,11 @@ public record HomeRecord(
 		ResourceKey<Level> dimension,
 		BlockPos beacon,
 		float yaw,
-		float pitch) {
+		float pitch,
+		int beamColour) {
+
+	/** Used when a beacon has no beam, or its colour has not been observed yet. */
+	public static final int WHITE = 0xFFFFFF;
 
 	public static final Codec<HomeRecord> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 			UUIDUtil.CODEC.fieldOf("id").forGetter(HomeRecord::id),
@@ -37,12 +41,19 @@ public record HomeRecord(
 					.forGetter(HomeRecord::dimension),
 			BlockPos.CODEC.fieldOf("beacon").forGetter(HomeRecord::beacon),
 			Codec.FLOAT.fieldOf("yaw").forGetter(HomeRecord::yaw),
-			Codec.FLOAT.fieldOf("pitch").forGetter(HomeRecord::pitch)
+			Codec.FLOAT.fieldOf("pitch").forGetter(HomeRecord::pitch),
+			// Optional so records written before colours were stored still load.
+			Codec.INT.optionalFieldOf("beam_colour", WHITE).forGetter(HomeRecord::beamColour)
 	).apply(instance, HomeRecord::new));
 
 	/** A copy under a new name, keeping the same identity so a rename is not a delete and recreate. */
 	public HomeRecord renamedTo(String newName) {
-		return new HomeRecord(id, owner, newName, dimension, beacon, yaw, pitch);
+		return new HomeRecord(id, owner, newName, dimension, beacon, yaw, pitch, beamColour);
+	}
+
+	/** A copy carrying a freshly observed beam colour. */
+	public HomeRecord withBeamColour(int colour) {
+		return new HomeRecord(id, owner, name, dimension, beacon, yaw, pitch, colour);
 	}
 
 	/** Whether this home is bound to the given beacon block. */
