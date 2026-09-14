@@ -14,7 +14,21 @@ import java.util.Optional;
  * <p>Deliberately free of Minecraft imports so precedence can be unit tested without the game; the
  * command and dialog layers wrap {@link #message()} in a text component.
  */
-public record Failure(Reason reason, String message) {
+public record Failure(Reason reason, String message, String translationKey) {
+	public Failure(Reason reason, String message) {
+		this(reason, message, null);
+	}
+
+	/**
+	 * A failure phrased with an existing Minecraft translation.
+	 *
+	 * <p>{@code message} stays as the English fallback for logs and tests; the key is what players
+	 * actually see, so the wording matches what Minecraft already says elsewhere and follows their
+	 * language setting.
+	 */
+	public static Failure translated(Reason reason, String key, String fallback) {
+		return new Failure(reason, fallback, key);
+	}
 	public enum Reason {
 		FEATURE_UNAVAILABLE,
 		DESTINATION_MISSING,

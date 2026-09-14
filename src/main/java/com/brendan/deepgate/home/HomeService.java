@@ -82,7 +82,7 @@ public final class HomeService {
 		PYRAMID_TOO_SMALL("Beacon pyramid is too small"),
 		BEAM_BLOCKED("Beacon beam is blocked"),
 		CROSS_DIMENSION_DISABLED("In another dimension"),
-		OBSTRUCTED("No room to arrive near the beacon"),
+		OBSTRUCTED("No clear space beside the beacon, or it was obstructed"),
 		/** The beacon is genuinely gone; the record is deleted when this is discovered. */
 		GONE("Beacon is gone"),
 		/**
@@ -181,7 +181,13 @@ public final class HomeService {
 			return Optional.empty();
 		}
 
-		for (ArrivalSearch.Offset offset : ArrivalSearch.candidates()) {
+		// A bigger pyramid earns a wider landing area. One layer is assumed when the beacon cannot be
+		// read, which is the smallest a home is ever allowed to be anchored to.
+		int layers = BeaconScan.beaconAt(level, home.beacon())
+				.map(BeaconScan.Found::levels)
+				.orElse(1);
+
+		for (ArrivalSearch.Offset offset : ArrivalSearch.candidatesFor(layers)) {
 			BlockPos candidate = top.offset(offset.dx(), offset.dy(), offset.dz());
 
 			if (!level.isLoaded(candidate)) {

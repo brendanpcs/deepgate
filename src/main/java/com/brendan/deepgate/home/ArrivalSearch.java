@@ -17,8 +17,18 @@ import java.util.List;
  * <p>Deliberately free of Minecraft imports so the ordering can be unit tested without the game.
  */
 public final class ArrivalSearch {
-	/** How far from the beacon column a player may be placed. */
-	public static final int RADIUS = 3;
+	/**
+	 * How far from the beam a player may be placed, per layer of the pyramid.
+	 *
+	 * <p>A bigger beacon reaches further: one layer gives one block of room, a full four-layer
+	 * pyramid gives four. A stronger beacon is more work to build, so it earns a wider landing area.
+	 */
+	public static final int RADIUS_PER_LAYER = 1;
+
+	/** The radius a beacon of this many layers searches within. */
+	public static int radiusFor(int pyramidLayers) {
+		return Math.max(1, pyramidLayers) * RADIUS_PER_LAYER;
+	}
 
 	/** How far above and below the top of the beacon to look. */
 	public static final int VERTICAL_REACH = 2;
@@ -35,16 +45,16 @@ public final class ArrivalSearch {
 	}
 
 	/**
-	 * Every candidate spot, nearest first.
+	 * Every candidate spot for a beacon of this size, nearest first.
 	 *
 	 * <p>Ordered by horizontal distance, then by how far it is vertically from the top of the beacon,
 	 * then by a fixed tiebreak so the result never depends on iteration order.
 	 */
-	public static List<Offset> candidates() {
-		return candidates(RADIUS, VERTICAL_REACH);
+	public static List<Offset> candidatesFor(int pyramidLayers) {
+		return candidates(radiusFor(pyramidLayers), VERTICAL_REACH);
 	}
 
-	static List<Offset> candidates(int radius, int verticalReach) {
+	public static List<Offset> candidates(int radius, int verticalReach) {
 		List<Offset> offsets = new ArrayList<>();
 		int limit = radius * radius;
 

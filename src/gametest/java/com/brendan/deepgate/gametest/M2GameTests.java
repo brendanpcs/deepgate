@@ -511,8 +511,9 @@ public final class M2GameTests {
 
 			int dx = landed.getX() - beacon.getX();
 			int dz = landed.getZ() - beacon.getZ();
+			int radius = ArrivalSearch.radiusFor(4);
 
-			if (dx * dx + dz * dz > ArrivalSearch.RADIUS * ArrivalSearch.RADIUS) {
+			if (dx * dx + dz * dz > radius * radius) {
 				throw helper.assertionException("arrival is outside the radius, landed at " + landed);
 			}
 

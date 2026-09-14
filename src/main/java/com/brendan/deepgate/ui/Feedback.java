@@ -43,6 +43,8 @@ public final class Feedback {
 
 	/** A refusal, phrased as the corrective action wherever the reason allows one. */
 	public static void refused(ServerPlayer player, Failure failure) {
-		player.sendSystemMessage(Component.literal(failure.message()));
+		player.sendSystemMessage(failure.translationKey() == null
+				? Component.literal(failure.message())
+				: Component.translatable(failure.translationKey()));
 	}
 }

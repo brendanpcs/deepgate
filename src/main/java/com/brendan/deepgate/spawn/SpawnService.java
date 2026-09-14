@@ -29,6 +29,9 @@ import net.minecraft.world.phys.Vec3;
  * failure, not a reason to quietly send the player somewhere else.
  */
 public final class SpawnService {
+	/** Vanilla's own wording for a respawn point that exists but cannot be used. */
+	public static final String SPAWN_NOT_VALID = "block.minecraft.spawn.not_valid";
+
 	private SpawnService() {
 	}
 
@@ -104,12 +107,11 @@ public final class SpawnService {
 		if (transition.missingRespawnBlock()) {
 			// The block is still there but cannot be used - obstructed, or an anchor with no charge.
 			// Vanilla would quietly fall back to world spawn here; section 11 says /spawn must not.
+			// The wording Minecraft already uses when a respawn point cannot be honoured, so the
+			// message is one players recognise and it follows their language.
 			return new Resolution.Blocked(
-					Failure.of(Failure.Reason.DESTINATION_INVALID, kind == Kind.ANCHOR
-							? (state.getValue(RespawnAnchorBlock.CHARGE) <= 0
-									? "Your respawn anchor has no charge"
-									: "Your respawn anchor is blocked")
-							: "Your bed is obstructed"),
+					Failure.translated(Failure.Reason.DESTINATION_INVALID, SPAWN_NOT_VALID,
+							"You have no home bed or charged respawn anchor, or it was obstructed"),
 					kind);
 		}
 
