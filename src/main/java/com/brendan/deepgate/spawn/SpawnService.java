@@ -82,20 +82,34 @@ public final class SpawnService {
 		}
 
 		BlockPos block = data.pos();
-		BlockState state = level.isLoaded(block) ? level.getBlockState(block) : null;
+
+		// Pull the chunk in so "the block is gone" is something actually observed. An unloaded chunk
+		// reports air, and clearing a personal spawn on that would destroy a perfectly good bed.
+		level.getChunkAt(block);
+		BlockState state = level.getBlockState(block);
 		Kind kind = kindOf(state);
+
+		if (kind == Kind.WORLD) {
+			// The defining bed or anchor is gone, so the personal spawn goes with it (section 11) and
+			// world spawn takes over. This is the one case that legitimately falls back: there is no
+			// longer a personal spawn to fail against.
+			clearPersonalSpawn(player);
+			return resolveWorldSpawn(player, server, rules);
+		}
 
 		// Ask vanilla where the player would actually appear, taking nothing.
 		TeleportTransition transition = player.findRespawnPositionAndUseSpawnBlock(
 				false, TeleportTransition.DO_NOTHING);
 
 		if (transition.missingRespawnBlock()) {
-			// The bed or anchor is gone, obstructed, or otherwise unusable. Vanilla would fall back to
-			// world spawn here; section 11 is explicit that /spawn must not.
+			// The block is still there but cannot be used - obstructed, or an anchor with no charge.
+			// Vanilla would quietly fall back to world spawn here; section 11 says /spawn must not.
 			return new Resolution.Blocked(
 					Failure.of(Failure.Reason.DESTINATION_INVALID, kind == Kind.ANCHOR
-							? "Your respawn anchor is blocked or has no charge"
-							: "Your bed is missing or obstructed"),
+							? (state.getValue(RespawnAnchorBlock.CHARGE) <= 0
+									? "Your respawn anchor has no charge"
+									: "Your respawn anchor is blocked")
+							: "Your bed is obstructed"),
 					kind);
 		}
 
@@ -128,6 +142,43 @@ public final class SpawnService {
 
 		return new Resolution.World(new Destination(
 				transition.newLevel(), transition.position(), transition.yRot(), transition.xRot()));
+	}
+
+	/**
+	 * Forget a personal spawn whose block no longer exists (section 11).
+	 *
+	 * <p>Only ever called after actually looking at a loaded block and finding it gone.
+	 */
+	public static void clearPersonalSpawn(ServerPlayer player) {
+		player.setRespawnPosition(null, false);
+	}
+
+	/**
+	 * Clear the personal spawn of every online player who was bound to this block.
+	 *
+	 * <p>Called when a bed or anchor is broken, so an online player is updated immediately rather
+	 * than finding out the next time they use {@code /spawn} (section 11). Players who are offline
+	 * are caught by the check in {@link #resolve} instead.
+	 */
+	public static void onSpawnBlockBroken(MinecraftServer server, ServerLevel level, BlockPos pos) {
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			ServerPlayer.RespawnConfig config = player.getRespawnConfig();
+
+			if (config == null) {
+				continue;
+			}
+
+			LevelData.RespawnData data = config.respawnData();
+
+			if (data.dimension().equals(level.dimension()) && data.pos().equals(pos)) {
+				clearPersonalSpawn(player);
+			}
+		}
+	}
+
+	/** Whether a block is the sort of thing that can define a personal spawn. */
+	public static boolean isSpawnBlock(BlockState state) {
+		return state.getBlock() instanceof BedBlock || state.getBlock() instanceof RespawnAnchorBlock;
 	}
 
 	private static boolean crossDimensionAllowed(ServerPlayer player, ServerLevel destination, RuleSnapshot rules) {

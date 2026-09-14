@@ -12,6 +12,7 @@ import com.brendan.deepgate.home.HomeName;
 import com.brendan.deepgate.home.HomeRecord;
 import com.brendan.deepgate.home.HomeService;
 import com.brendan.deepgate.spawn.AnchorChargeResource;
+import com.brendan.deepgate.spawn.SpawnService;
 import com.brendan.deepgate.state.DeepgateState;
 
 import net.minecraft.core.BlockPos;
@@ -21,6 +22,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RespawnAnchorBlock;
+import net.minecraft.world.level.storage.LevelData;
 
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 
@@ -479,6 +481,106 @@ public final class M2GameTests {
 			}
 		} finally {
 			state.remove(home.id());
+		}
+
+		helper.succeed();
+	}
+
+	/**
+	 * A destroyed bed clears the personal spawn and /spawn falls back to world spawn (section 11).
+	 *
+	 * <p>The distinction that matters: a block that is <em>gone</em> falls back, a block that is
+	 * merely unusable fails. Vanilla reports both through the same flag, so they have to be told
+	 * apart by looking at the block.
+	 */
+	@GameTest
+	public void aDestroyedBedFallsBackToWorldSpawn(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		RuleSnapshot rules = rules(helper);
+
+		BlockPos bedRelative = new BlockPos(2, 2, 2);
+		helper.setBlock(bedRelative.below(), Blocks.STONE);
+		helper.setBlock(bedRelative, Blocks.BED.pick(DyeColor.RED));
+		BlockPos bed = helper.absolutePos(bedRelative);
+
+		player.setRespawnPosition(new ServerPlayer.RespawnConfig(
+				LevelData.RespawnData.of(helper.getLevel().dimension(), bed, 0.0F, 0.0F), false), false);
+
+		if (player.getRespawnConfig() == null) {
+			throw helper.assertionException("setup: the respawn position did not take");
+		}
+
+		// Break it, exactly as a player would.
+		helper.setBlock(bedRelative, Blocks.AIR);
+
+		SpawnService.Resolution resolution = SpawnService.resolve(player, rules);
+
+		if (resolution instanceof SpawnService.Resolution.Blocked blocked) {
+			throw helper.assertionException("a destroyed bed must not block /spawn: "
+					+ blocked.failure().message());
+		}
+
+		if (!(resolution instanceof SpawnService.Resolution.World)) {
+			throw helper.assertionException("expected a fall back to world spawn, got " + resolution);
+		}
+
+		// The stale record must be gone, not merely ignored.
+		if (player.getRespawnConfig() != null) {
+			throw helper.assertionException("the personal spawn should have been cleared");
+		}
+
+		helper.succeed();
+	}
+
+	/** Breaking a spawn block clears it for an online player straight away (section 11). */
+	@GameTest
+	public void breakingASpawnBlockClearsItForOnlinePlayers(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+
+		BlockPos anchorRelative = new BlockPos(4, 2, 4);
+		helper.setBlock(anchorRelative, Blocks.RESPAWN_ANCHOR.defaultBlockState()
+				.setValue(RespawnAnchorBlock.CHARGE, 1));
+		BlockPos anchor = helper.absolutePos(anchorRelative);
+
+		player.setRespawnPosition(new ServerPlayer.RespawnConfig(
+				LevelData.RespawnData.of(helper.getLevel().dimension(), anchor, 0.0F, 0.0F), false), false);
+
+		SpawnService.onSpawnBlockBroken(helper.getLevel().getServer(), helper.getLevel(), anchor);
+
+		if (player.getRespawnConfig() != null) {
+			throw helper.assertionException("breaking the anchor should clear the personal spawn");
+		}
+
+		helper.succeed();
+	}
+
+	/** An anchor that still exists but has no charge fails rather than falling back (section 12). */
+	@GameTest
+	public void anEmptyAnchorBlocksSpawnRatherThanFallingBack(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+
+		BlockPos anchorRelative = new BlockPos(6, 2, 6);
+		helper.setBlock(anchorRelative, Blocks.RESPAWN_ANCHOR.defaultBlockState()
+				.setValue(RespawnAnchorBlock.CHARGE, 0));
+		BlockPos anchor = helper.absolutePos(anchorRelative);
+
+		player.setRespawnPosition(new ServerPlayer.RespawnConfig(
+				LevelData.RespawnData.of(helper.getLevel().dimension(), anchor, 0.0F, 0.0F), false), false);
+
+		SpawnService.Resolution resolution = SpawnService.resolve(player, rules(helper));
+
+		if (!(resolution instanceof SpawnService.Resolution.Blocked blocked)) {
+			throw helper.assertionException("an empty anchor must block, got " + resolution);
+		}
+
+		if (!blocked.failure().message().contains("charge")) {
+			throw helper.assertionException("the reason should name the charge: "
+					+ blocked.failure().message());
+		}
+
+		// It stays configured: an empty anchor is still the personal spawn (section 12).
+		if (player.getRespawnConfig() == null) {
+			throw helper.assertionException("an empty anchor must remain the configured spawn");
 		}
 
 		helper.succeed();

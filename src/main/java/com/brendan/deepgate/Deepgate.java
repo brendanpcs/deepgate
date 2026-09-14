@@ -7,6 +7,7 @@ import com.brendan.deepgate.dialog.DialogService;
 import com.brendan.deepgate.home.BeaconScan;
 import com.brendan.deepgate.home.HomeService;
 import com.brendan.deepgate.request.RequestService;
+import com.brendan.deepgate.spawn.SpawnService;
 import com.brendan.deepgate.state.DeepgateState;
 import com.brendan.deepgate.ui.HomeUi;
 import com.brendan.deepgate.ui.SpawnUi;
@@ -101,13 +102,24 @@ public final class Deepgate implements ModInitializer {
 		// Breaking a beacon takes every home bound to it, for every player (sections 14 and 18).
 		// Every other kind of damage - a shrunken pyramid, a blocked beam - leaves the record alone.
 		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> {
-			if (blockEntity instanceof BeaconBlockEntity && level instanceof ServerLevel serverLevel) {
+			if (!(level instanceof ServerLevel serverLevel)) {
+				return;
+			}
+
+			if (blockEntity instanceof BeaconBlockEntity) {
 				int removed = DeepgateState.get(serverLevel.getServer())
 						.removeHomesAt(serverLevel.dimension(), pos);
 
 				if (removed > 0) {
 					LOGGER.info("Removed {} Deepgate home(s) bound to the beacon broken at {}", removed, pos);
 				}
+			}
+
+			// Breaking a bed or anchor clears the personal spawn of anyone online who was bound to it
+			// (section 11), so /spawn falls back to world spawn rather than reporting a block that is
+			// no longer there. Offline players are caught when they next use /spawn.
+			if (SpawnService.isSpawnBlock(state)) {
+				SpawnService.onSpawnBlockBroken(serverLevel.getServer(), serverLevel, pos);
 			}
 		});
 
