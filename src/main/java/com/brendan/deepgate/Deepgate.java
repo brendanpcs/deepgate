@@ -3,6 +3,7 @@ package com.brendan.deepgate;
 import com.brendan.deepgate.command.DeepgateCommands;
 import com.brendan.deepgate.core.CombatTracker;
 import com.brendan.deepgate.core.TeleportService;
+import com.brendan.deepgate.core.XpAccount;
 import com.brendan.deepgate.dialog.DialogService;
 import com.brendan.deepgate.home.BeaconScan;
 import com.brendan.deepgate.home.HomeService;
@@ -134,8 +135,20 @@ public final class Deepgate implements ModInitializer {
 
 		// Death clears the undo record: "back" would otherwise mean back to where you died.
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
-			if (!alive) {
-				TELEPORTS.clearBack(newPlayer.getUUID());
+			if (alive) {
+				// Not a death - an end portal return or similar. Nothing to do.
+				return;
+			}
+
+			TELEPORTS.clearBack(newPlayer.getUUID());
+
+			// Experience is what every Deepgate fare is paid in, so keeping it through death with
+			// keepInventory on would make travel free for anyone who just died. Stripping it keeps
+			// the cost of a teleport meaningful. Off with deepgate:lose_xp_on_death false.
+			MinecraftServer server = newPlayer.level().getServer();
+
+			if (server != null && server.getGameRules().get(DeepgateRules.LOSE_XP_ON_DEATH)) {
+				XpAccount.setTotalPoints(newPlayer, 0);
 			}
 		});
 

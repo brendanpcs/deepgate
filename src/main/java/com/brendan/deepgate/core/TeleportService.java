@@ -88,7 +88,7 @@ public final class TeleportService {
 		int points = fare.pointsFor(held);
 
 		if (held < points) {
-			failures.add(Failure.insufficientXp(fare, fare.inLevels() ? player.experienceLevel : held));
+			failures.add(Failure.insufficientXp(fare, points, held));
 		}
 
 		Optional<Failure> primary = Failure.primary(failures, Failure.COMMAND_ORDER);
@@ -109,7 +109,7 @@ public final class TeleportService {
 		TxnLedger ledger = new TxnLedger();
 
 		if (!ledger.consume(new XpResource(player, points))) {
-			return new Result.Failed(Failure.insufficientXp(fare, held));
+			return new Result.Failed(Failure.insufficientXp(fare, points, held));
 		}
 
 		for (TxnResource resource : extra) {

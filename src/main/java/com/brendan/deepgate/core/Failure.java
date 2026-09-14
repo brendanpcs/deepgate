@@ -70,11 +70,20 @@ public record Failure(Reason reason, String message) {
 		return new Failure(Reason.CROSS_DIMENSION_DISABLED, "Cross-dimension travel is disabled");
 	}
 
-	/** Insufficient experience, phrased with the shortfall so the player knows how much to earn. */
-	public static Failure insufficientXp(Fare fare, int held) {
-		String unit = fare.inLevels() ? " levels" : " XP";
-		int shortfall = Math.max(0, fare.amount() - held);
+	/**
+	 * Insufficient experience, phrased with the shortfall so the player knows how much to earn.
+	 *
+	 * <p>Everything is quoted in points here even when the fare was set in levels, because a
+	 * shortfall in levels is not a number anyone can act on: what you need is experience.
+	 */
+	public static Failure insufficientXp(Fare fare, int neededPoints, int heldPoints) {
+		int shortfall = Math.max(0, neededPoints - heldPoints);
+
+		String need = fare.levels() > 0
+				? fare.describe() + " (" + neededPoints + " XP)"
+				: neededPoints + " XP";
+
 		return new Failure(Reason.INSUFFICIENT_XP,
-				"Not enough experience: need " + fare.amount() + unit + ", short " + shortfall + unit);
+				"Not enough experience: need " + need + ", short " + shortfall + " XP");
 	}
 }

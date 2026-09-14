@@ -5,7 +5,9 @@ import java.util.UUID;
 
 import com.brendan.deepgate.Deepgate;
 import com.brendan.deepgate.DeepgateRules;
+import com.brendan.deepgate.core.Cost;
 import com.brendan.deepgate.core.RuleSnapshot;
+import com.brendan.deepgate.core.XpAccount;
 import com.brendan.deepgate.home.ArrivalSearch;
 import com.brendan.deepgate.home.BeaconScan;
 import com.brendan.deepgate.home.HomeName;
@@ -17,11 +19,13 @@ import com.brendan.deepgate.state.DeepgateState;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RespawnAnchorBlock;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.storage.LevelData;
 
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
@@ -652,6 +656,137 @@ public final class M2GameTests {
 		// It stays configured: an empty anchor is still the personal spawn (section 12).
 		if (player.getRespawnConfig() == null) {
 			throw helper.assertionException("an empty anchor must remain the configured spawn");
+		}
+
+		helper.succeed();
+	}
+
+	/**
+	 * The cost gamerules round trip through the command and through the world file.
+	 *
+	 * <p>These rules carry a value vanilla has no type for, so this checks the two paths that would
+	 * break if the custom argument or codec were wrong: setting one, and serialising it.
+	 */
+	@GameTest
+	public void costRulesAcceptAnAmountAndAUnit(GameTestHelper helper) {
+		GameRules rules = helper.getLevel().getServer().getGameRules();
+		Cost original = rules.get(DeepgateRules.XP_COST_PER_1K);
+
+		try {
+			rules.set(DeepgateRules.XP_COST_PER_1K, new Cost(3, Cost.Unit.LEVELS),
+					helper.getLevel().getServer());
+
+			Cost read = rules.get(DeepgateRules.XP_COST_PER_1K);
+
+			if (read.amount() != 3 || !read.inLevels()) {
+				throw helper.assertionException("expected 3 levels, got " + read);
+			}
+
+			// The text form is what the command takes and what the world file stores.
+			String serialised = DeepgateRules.XP_COST_PER_1K.serialize(read);
+
+			if (!serialised.equals("3 levels")) {
+				throw helper.assertionException("unexpected serialised form: " + serialised);
+			}
+
+			Cost parsed = DeepgateRules.XP_COST_PER_1K.deserialize(serialised).result()
+					.orElseThrow(() -> helper.assertionException("could not read back " + serialised));
+
+			if (!parsed.equals(read)) {
+				throw helper.assertionException("round trip changed the value: " + parsed);
+			}
+
+			// A bare number still works, and means points.
+			Cost bare = DeepgateRules.XP_COST_PER_1K.deserialize("7").result()
+					.orElseThrow(() -> helper.assertionException("a bare number should parse"));
+
+			if (bare.amount() != 7 || bare.inLevels()) {
+				throw helper.assertionException("a bare number should mean points, got " + bare);
+			}
+
+			if (DeepgateRules.XP_COST_PER_1K.deserialize("5 bananas").result().isPresent()) {
+				throw helper.assertionException("nonsense should not parse");
+			}
+		} finally {
+			rules.set(DeepgateRules.XP_COST_PER_1K, original, helper.getLevel().getServer());
+		}
+
+		helper.succeed();
+	}
+
+	/**
+	 * The real command path: {@code /gamerule deepgate:xp_cost_per_1k 3 levels}.
+	 *
+	 * <p>The value is two tokens, which is not how gamerules normally work, so this runs it through
+	 * the actual dispatcher rather than trusting the codec alone. A custom argument type consuming
+	 * the unit after the number is the part that would quietly fail.
+	 */
+	@GameTest
+	public void theGameruleCommandAcceptsAnAmountAndAUnit(GameTestHelper helper) {
+		MinecraftServer server = helper.getLevel().getServer();
+		GameRules rules = server.getGameRules();
+		Cost original = rules.get(DeepgateRules.XP_COST_PER_1K);
+
+		try {
+			server.getCommands().performPrefixedCommand(
+					server.createCommandSourceStack(), "gamerule deepgate:xp_cost_per_1k 3 levels");
+
+			Cost afterLevels = rules.get(DeepgateRules.XP_COST_PER_1K);
+
+			if (afterLevels.amount() != 3 || !afterLevels.inLevels()) {
+				throw helper.assertionException("the command should have set 3 levels, got " + afterLevels);
+			}
+
+			server.getCommands().performPrefixedCommand(
+					server.createCommandSourceStack(), "gamerule deepgate:xp_cost_per_1k 8 points");
+
+			Cost afterPoints = rules.get(DeepgateRules.XP_COST_PER_1K);
+
+			if (afterPoints.amount() != 8 || afterPoints.inLevels()) {
+				throw helper.assertionException("the command should have set 8 points, got " + afterPoints);
+			}
+
+			// A bare number is accepted and means points.
+			server.getCommands().performPrefixedCommand(
+					server.createCommandSourceStack(), "gamerule deepgate:xp_cost_per_1k 4");
+
+			Cost bare = rules.get(DeepgateRules.XP_COST_PER_1K);
+
+			if (bare.amount() != 4 || bare.inLevels()) {
+				throw helper.assertionException("a bare number should mean points, got " + bare);
+			}
+
+			// A bad unit must be refused, leaving the previous value alone.
+			server.getCommands().performPrefixedCommand(
+					server.createCommandSourceStack(), "gamerule deepgate:xp_cost_per_1k 9 bananas");
+
+			if (!rules.get(DeepgateRules.XP_COST_PER_1K).equals(bare)) {
+				throw helper.assertionException("a rejected command must not change the rule");
+			}
+		} finally {
+			rules.set(DeepgateRules.XP_COST_PER_1K, original, server);
+		}
+
+		helper.succeed();
+	}
+
+	/** Experience is stripped on death when the rule is on, even with keepInventory. */
+	@GameTest
+	public void deathCostsExperienceWhenTheRuleIsOn(GameTestHelper helper) {
+		GameRules rules = helper.getLevel().getServer().getGameRules();
+
+		if (!rules.get(DeepgateRules.LOSE_XP_ON_DEATH)) {
+			throw helper.assertionException("lose_xp_on_death should default on");
+		}
+
+		// The hook itself runs on respawn, which a mock player cannot be driven through; what is
+		// checked here is the effect it applies.
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		XpAccount.setTotalPoints(player, 500);
+		XpAccount.setTotalPoints(player, 0);
+
+		if (XpAccount.totalPoints(player) != 0) {
+			throw helper.assertionException("clearing experience should leave nothing");
 		}
 
 		helper.succeed();

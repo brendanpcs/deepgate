@@ -45,7 +45,7 @@ public final class Quotes {
 		boolean crossDimension = isCrossDimension(mover, destinationLevel);
 
 		if (travelsFree(mover)) {
-			return new Fare(0, rules.xpCostInLevels(), distance, crossDimension);
+			return new Fare(0, 0, distance, crossDimension);
 		}
 
 		return Pricing.quote(distance, crossDimension, rules);

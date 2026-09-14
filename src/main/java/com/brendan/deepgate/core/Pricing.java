@@ -13,29 +13,35 @@ public final class Pricing {
 	}
 
 	/**
-	 * Price a move of {@code distance} blocks, measured in the destination's coordinate frame.
+	 * Price a move of {@code distance} blocks, measured in the coordinate frame of the destination.
 	 *
 	 * <p>The cross-dimension charge is <em>additive</em>, never a multiplier, and applies even when
-	 * the distance component came out free.
+	 * the distance component came out free. Each component keeps the unit its own rule was set in.
 	 */
 	public static Fare quote(double distance, boolean crossDimension, RuleSnapshot rules) {
-		int distanceFare = distanceFare(distance, rules);
-		int total = distanceFare + (crossDimension ? Math.max(0, rules.xpCrossDimension()) : 0);
+		Fare fare = new Fare(0, 0, distance, crossDimension);
 
-		return new Fare(total, rules.xpCostInLevels(), distance, crossDimension);
+		fare = fare.plus(distanceCost(distance, rules));
+
+		if (crossDimension) {
+			fare = fare.plus(rules.xpCrossDimension());
+		}
+
+		return fare;
 	}
 
 	/** The distance component alone, before any dimensional surcharge. */
-	static int distanceFare(double distance, RuleSnapshot rules) {
+	static Cost distanceCost(double distance, RuleSnapshot rules) {
 		if (distance < rules.xpFreeDistance()) {
-			return 0;
+			return Cost.FREE;
 		}
 
-		if (rules.xpCostPer1k() <= 0) {
-			return 0;
+		Cost rate = rules.xpCostPer1k();
+
+		if (rate.isFree()) {
+			return Cost.FREE;
 		}
 
-		double raw = distance / 1000.0D * rules.xpCostPer1k();
-		return (int) Math.ceil(raw);
+		return rate.times(distance / 1000.0D);
 	}
 }

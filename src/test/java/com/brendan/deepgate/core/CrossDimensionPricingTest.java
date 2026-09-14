@@ -17,12 +17,13 @@ class CrossDimensionPricingTest {
 
 	/** Defaults: 5 XP per 1000 blocks, 25 flat across dimensions, under 1000 blocks is free. */
 	private static final RuleSnapshot RULES = new RuleSnapshot(
-			true, false, 10, true, 10, 1, 5, false, 25, 1000, 15, 64);
+			true, false, 10, true, 10, 1,
+			new Cost(5, Cost.Unit.POINTS), new Cost(25, Cost.Unit.POINTS), 1000, 15, 64);
 
 	private static int fare(double sx, double sy, double sz, double sourceScale,
 			double dx, double dy, double dz, double destScale, boolean crossDimension) {
 		double distance = GeoMath.distance(sx, sy, sz, sourceScale, dx, dy, dz, destScale);
-		return Pricing.quote(distance, crossDimension, RULES).amount();
+		return Pricing.quote(distance, crossDimension, RULES).points();
 	}
 
 	@Test

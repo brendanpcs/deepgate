@@ -12,7 +12,7 @@ class FailureTest {
 	@Test
 	void commandOrderPrefersFeatureUnavailableOverEverything() {
 		List<Failure> failures = List.of(
-				Failure.insufficientXp(new Fare(20, false, 0, false), 3),
+				Failure.insufficientXp(new Fare(20, 0, 0, false), 20, 3),
 				Failure.combat(6),
 				Failure.of(Failure.Reason.FEATURE_UNAVAILABLE, "Homes are disabled"));
 
@@ -24,7 +24,7 @@ class FailureTest {
 	@Test
 	void combatOutranksInsufficientXp() {
 		List<Failure> failures = List.of(
-				Failure.insufficientXp(new Fare(20, false, 0, false), 3),
+				Failure.insufficientXp(new Fare(20, 0, 0, false), 20, 3),
 				Failure.combat(6));
 
 		assertEquals(Failure.Reason.COMBAT, Failure.primary(failures, Failure.COMMAND_ORDER).orElseThrow().reason());
@@ -91,11 +91,14 @@ class FailureTest {
 	void messagesStateTheCorrectiveAction() {
 		assertEquals("In combat: 6s remaining", Failure.combat(6).message());
 
-		Failure shortOnXp = Failure.insufficientXp(new Fare(20, false, 0, false), 3);
+		Failure shortOnXp = Failure.insufficientXp(new Fare(20, 0, 0, false), 20, 3);
 		assertTrue(shortOnXp.message().contains("need 20 XP"), shortOnXp.message());
 		assertTrue(shortOnXp.message().contains("short 17 XP"), shortOnXp.message());
 
-		Failure shortOnLevels = Failure.insufficientXp(new Fare(3, true, 0, false), 1);
-		assertTrue(shortOnLevels.message().contains("3 levels"), shortOnLevels.message());
+		// A levels fare still quotes the shortfall in points, because that is what you go and earn.
+		Failure shortOnLevels = Failure.insufficientXp(new Fare(0, 3, 0, false), 247, 100);
+		assertTrue(shortOnLevels.message().contains("3 Levels"), shortOnLevels.message());
+		assertTrue(shortOnLevels.message().contains("247 XP"), shortOnLevels.message());
+		assertTrue(shortOnLevels.message().contains("short 147 XP"), shortOnLevels.message());
 	}
 }

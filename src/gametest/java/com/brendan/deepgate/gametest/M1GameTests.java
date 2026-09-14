@@ -48,9 +48,10 @@ public final class M1GameTests {
 		assertTrue(helper, rules.allowHomes(), "allow_homes should default true");
 		assertEquals(helper, 10, rules.maxHomes(), "max_homes");
 		assertEquals(helper, 1, rules.homeBeaconLayers(), "home_beacon_layers");
-		assertEquals(helper, 5, rules.xpCostPer1k(), "xp_cost_per_1k");
-		assertTrue(helper, !rules.xpCostInLevels(), "xp_cost_in_levels should default false");
-		assertEquals(helper, 25, rules.xpCrossDimension(), "xp_cross_dimension");
+		assertEquals(helper, 5, rules.xpCostPer1k().amount(), "xp_cost_per_1k");
+		assertTrue(helper, !rules.xpCostPer1k().inLevels(), "xp_cost_per_1k defaults to points");
+		assertEquals(helper, 25, rules.xpCrossDimension().amount(), "xp_cross_dimension");
+		assertTrue(helper, !rules.xpCrossDimension().inLevels(), "xp_cross_dimension defaults to points");
 		assertEquals(helper, 1000, rules.xpFreeDistance(), "xp_free_distance");
 		assertEquals(helper, 15, rules.backWindowSeconds(), "back_window_seconds");
 		assertEquals(helper, 64, rules.portalMaxFrameBlocks(), "portal_max_frame_blocks");
@@ -89,7 +90,7 @@ public final class M1GameTests {
 		TeleportService.Result result = teleports.execute(
 				player,
 				new Destination(helper.getLevel(), target, 0.0F, 0.0F),
-				new Fare(20, false, 0.0D, false),
+				new Fare(20, 0, 0.0D, false),
 				List.of(),
 				List.of(),
 				rules(helper));
@@ -114,7 +115,7 @@ public final class M1GameTests {
 		TeleportService.Result result = Deepgate.teleports().execute(
 				player,
 				new Destination(helper.getLevel(), origin.add(0.0D, 0.0D, 2.0D), 0.0F, 0.0F),
-				new Fare(400, false, 0.0D, false),
+				new Fare(400, 0, 0.0D, false),
 				List.of(),
 				List.of(),
 				rules(helper));
@@ -139,7 +140,7 @@ public final class M1GameTests {
 		TeleportService.Result outbound = teleports.execute(
 				player,
 				new Destination(helper.getLevel(), origin.add(0.0D, 0.0D, 2.0D), 0.0F, 0.0F),
-				new Fare(20, false, 0.0D, false),
+				new Fare(20, 0, 0.0D, false),
 				List.of(),
 				List.of(),
 				rules(helper));
@@ -177,7 +178,7 @@ public final class M1GameTests {
 		TeleportService.Result result = Deepgate.teleports().execute(
 				player,
 				new Destination(helper.getLevel(), origin.add(0.0D, 0.0D, 2.0D), 0.0F, 0.0F),
-				new Fare(20, false, 0.0D, false),
+				new Fare(20, 0, 0.0D, false),
 				List.of(),
 				List.of(),
 				rules);
@@ -204,7 +205,7 @@ public final class M1GameTests {
 		TeleportService.Result result = Deepgate.teleports().execute(
 				player,
 				new Destination(helper.getLevel(), inside, 0.0F, 0.0F),
-				new Fare(20, false, 0.0D, false),
+				new Fare(20, 0, 0.0D, false),
 				List.of(),
 				List.of(),
 				rules(helper));
@@ -272,12 +273,12 @@ public final class M1GameTests {
 
 		Fare quoted = Quotes.quote(player, helper.getLevel(), faraway, rules);
 
-		assertTrue(helper, quoted.isFree(), "creative must be quoted free, was " + quoted.amount());
+		assertTrue(helper, quoted.isFree(), "creative must be quoted free, was " + quoted.describe());
 		assertTrue(helper, quoted.distance() > 1000.0D,
 				"the distance must still be reported, was " + quoted.distance());
 
 		// The same distance, priced normally, is emphatically not free.
-		int survivalFare = Pricing.quote(quoted.distance(), false, rules).amount();
+		int survivalFare = Pricing.quote(quoted.distance(), false, rules).points();
 		assertTrue(helper, survivalFare > 0,
 				"the same trip should cost a survival player something, was " + survivalFare);
 

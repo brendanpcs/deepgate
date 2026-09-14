@@ -14,9 +14,8 @@ public record RuleSnapshot(
 		boolean allowHomes,
 		int maxHomes,
 		int homeBeaconLayers,
-		int xpCostPer1k,
-		boolean xpCostInLevels,
-		int xpCrossDimension,
+		Cost xpCostPer1k,
+		Cost xpCrossDimension,
 		int xpFreeDistance,
 		int backWindowSeconds,
 		int portalMaxFrameBlocks) {

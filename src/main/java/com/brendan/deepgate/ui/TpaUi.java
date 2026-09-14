@@ -516,18 +516,12 @@ public final class TpaUi {
 
 	/** Just the amount and unit, for use inside a sentence. */
 	public static String fareAmount(Fare fare) {
-		return fare.inLevels() ? fare.amount() + " Levels" : "XP " + fare.amount();
+		return fare.describe();
 	}
 
-	/** Fare rendered in whichever unit the gamerule selected (section 6). */
+	/** Fare rendered in whichever units its rules were set in (section 6). */
 	public static String describeFare(Fare fare) {
-		if (fare.isFree()) {
-			return "Teleport - free";
-		}
-
-		return fare.inLevels()
-				? "Teleport - " + fare.amount() + " Levels"
-				: "Teleport - XP " + fare.amount();
+		return "Teleport - " + fare.describe();
 	}
 
 	private static TpaRequest.Kind kindOf(CompoundTag payload) {

@@ -214,8 +214,15 @@ public final class RequestService {
 		Fare fare = Quotes.quote(mover, anchor, rules);
 		boolean dimensionChanged = !destination.level().dimension().equals(request.approvedDimension());
 
+		// Compare what each fare would actually take from this payer. With mixed units a bare amount
+		// is not comparable: two levels and twenty points are not two numbers on the same scale.
+		int payerHeld = com.brendan.deepgate.core.XpAccount.totalPoints(
+				server.getPlayerList().getPlayer(request.payerId()));
+		int approvedPoints = request.approvedFare().pointsFor(payerHeld);
+		int currentPoints = fare.pointsFor(payerHeld);
+
 		if (!payerJustApproved
-				&& ReapprovalPolicy.needsApproval(request.approvedFare().amount(), fare.amount(), dimensionChanged)) {
+				&& ReapprovalPolicy.needsApproval(approvedPoints, currentPoints, dimensionChanged)) {
 			request.state(TpaRequest.State.PENDING_PAYER);
 			request.approve(fare, destination.level().dimension());
 			return new Outcome.NeedsApproval(request, fare, dimensionChanged);
