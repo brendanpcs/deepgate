@@ -103,14 +103,13 @@ public final class HomeUi {
 		List<ActionButton> buttons = new ArrayList<>();
 
 		for (HomeRecord home : homes) {
-			HomeService.Availability availability = Deepgate.homes().availability(player, home, rules);
-
 			CompoundTag payload = new CompoundTag();
 			payload.putString(KEY_HOME, home.id().toString());
 
-			String label = availability.worthReporting()
-					? home.name() + " (" + availability.description() + ")"
-					: home.name();
+			// Names only. Whether a home can be reached is answered when you try it, in chat, the same
+			// way a bed or anchor answers it - rather than annotating a list nobody asked to be
+			// audited. It also keeps opening the menu cheap: no arrival search per home.
+			String label = home.name();
 
 			int colour = HomeService.beamColourOf(server, home);
 
@@ -132,7 +131,6 @@ public final class HomeUi {
 		RuleSnapshot rules = DeepgateRules.snapshot(server);
 		long tick = server.getTickCount();
 
-		HomeService.Availability availability = Deepgate.homes().availability(player, home, rules);
 		Optional<Destination> destination = HomeService.findArrival(player, home);
 
 		List<DialogBody> body = new ArrayList<>();
@@ -145,19 +143,15 @@ public final class HomeUi {
 			body.add(Dialogs.text(TpaUi.describeFare(fare)));
 		}
 
-		if (availability.worthReporting()) {
-			body.add(Dialogs.text("Unavailable: " + availability.description()));
-		}
-
 		CompoundTag payload = new CompoundTag();
 		payload.putString(KEY_HOME, home.id().toString());
 
 		List<ActionButton> actions = new ArrayList<>();
 
-		if (availability.usable()) {
-			actions.add(Dialogs.commit(Deepgate.dialogs(), player.getUUID(), tick,
-					Component.literal("Teleport"), TRAVEL, payload));
-		}
+		// Teleport is always offered. Pressing it is what finds out whether the home can be reached,
+		// and says so in chat if it cannot.
+		actions.add(Dialogs.commit(Deepgate.dialogs(), player.getUUID(), tick,
+				Component.literal("Teleport"), TRAVEL, payload));
 
 		actions.add(Dialogs.navigate(Component.literal("Rename"), RENAME_FORM, payload));
 		actions.add(Dialogs.navigate(Component.literal("Delete"), DELETE_CONFIRM, payload));

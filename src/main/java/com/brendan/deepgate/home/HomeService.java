@@ -183,9 +183,10 @@ public final class HomeService {
 
 		// A bigger pyramid earns a wider landing area. One layer is assumed when the beacon cannot be
 		// read, which is the smallest a home is ever allowed to be anchored to.
+		// Measured from the beacon when it can be read, otherwise the last size seen.
 		int layers = BeaconScan.beaconAt(level, home.beacon())
 				.map(BeaconScan.Found::levels)
-				.orElse(1);
+				.orElse(home.pyramidLayers());
 
 		for (ArrivalSearch.Offset offset : ArrivalSearch.candidatesFor(layers)) {
 			BlockPos candidate = top.offset(offset.dx(), offset.dy(), offset.dz());
@@ -265,6 +266,9 @@ public final class HomeService {
 
 		Optional<BeaconScan.Found> found = lookup.found();
 
+		// Remember what was seen, so a home can still describe itself once the beacon is unloaded.
+		remember(server, home, found.get());
+
 		if (!found.get().qualifies(rules.homeBeaconLayers())) {
 			return Availability.PYRAMID_TOO_SMALL;
 		}
@@ -278,6 +282,16 @@ public final class HomeService {
 		}
 
 		return Availability.AVAILABLE;
+	}
+
+	/** Store what was just observed about a beacon, for use when it cannot be read later. */
+	private static void remember(MinecraftServer server, HomeRecord home, BeaconScan.Found found) {
+		int colour = BeaconScan.beamColour(found.beacon());
+		int layers = found.levels();
+
+		if (colour != home.beamColour() || layers != home.pyramidLayers()) {
+			DeepgateState.get(server).replace(home.withBeamColour(colour).withPyramidLayers(layers));
+		}
 	}
 
 	/**
@@ -377,7 +391,10 @@ public final class HomeService {
 				facing.pitch(),
 				BeaconScan.beaconAt(player.level(), beacon)
 						.map(found -> BeaconScan.beamColour(found.beacon()))
-						.orElse(HomeRecord.WHITE)));
+						.orElse(HomeRecord.WHITE),
+				BeaconScan.beaconAt(player.level(), beacon)
+						.map(BeaconScan.Found::levels)
+						.orElse(1)));
 
 		return validation;
 	}

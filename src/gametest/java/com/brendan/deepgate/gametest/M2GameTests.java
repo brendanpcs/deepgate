@@ -92,7 +92,7 @@ public final class M2GameTests {
 		BlockPos beacon = helper.absolutePos(new BlockPos(2, 1, 2));
 
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), owner, "Workshop",
-				helper.getLevel().dimension(), beacon, 0.0F, 0.0F, HomeRecord.WHITE);
+				helper.getLevel().dimension(), beacon, 0.0F, 0.0F, HomeRecord.WHITE, 1);
 		state.add(home);
 
 		try {
@@ -133,11 +133,11 @@ public final class M2GameTests {
 		UUID alice = UUID.randomUUID();
 		UUID bob = UUID.randomUUID();
 
-		state.add(new HomeRecord(UUID.randomUUID(), alice, "A", level.dimension(), beacon, 0F, 0F, HomeRecord.WHITE));
-		state.add(new HomeRecord(UUID.randomUUID(), bob, "B", level.dimension(), beacon, 0F, 0F, HomeRecord.WHITE));
+		state.add(new HomeRecord(UUID.randomUUID(), alice, "A", level.dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1));
+		state.add(new HomeRecord(UUID.randomUUID(), bob, "B", level.dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1));
 		// A home on a different beacon must be left alone.
 		BlockPos elsewhere = helper.absolutePos(new BlockPos(5, 1, 5));
-		HomeRecord survivor = new HomeRecord(UUID.randomUUID(), alice, "C", level.dimension(), elsewhere, 0F, 0F, HomeRecord.WHITE);
+		HomeRecord survivor = new HomeRecord(UUID.randomUUID(), alice, "C", level.dimension(), elsewhere, 0F, 0F, HomeRecord.WHITE, 1);
 		state.add(survivor);
 
 		try {
@@ -181,7 +181,7 @@ public final class M2GameTests {
 		BlockPos beacon = helper.absolutePos(beaconRelative);
 
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Live",
-				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
 		state.add(home);
 
 		helper.runAfterDelay(120, () -> {
@@ -215,7 +215,7 @@ public final class M2GameTests {
 		helper.setBlock(new BlockPos(6, 1, 6), Blocks.AIR);
 
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Ghost",
-				helper.getLevel().dimension(), empty, 0F, 0F, HomeRecord.WHITE);
+				helper.getLevel().dimension(), empty, 0F, 0F, HomeRecord.WHITE, 1);
 		state.add(home);
 
 		HomeService.Availability availability =
@@ -269,7 +269,7 @@ public final class M2GameTests {
 
 		for (int i = 0; i < rules.maxHomes(); i++) {
 			state.add(new HomeRecord(UUID.randomUUID(), player.getUUID(), "Home" + i,
-					helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE));
+					helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1));
 		}
 
 		try {
@@ -304,9 +304,9 @@ public final class M2GameTests {
 		BlockPos beacon = helper.absolutePos(new BlockPos(8, 1, 8));
 
 		HomeRecord first = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Alpha",
-				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
 		HomeRecord second = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Beta",
-				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
 		state.add(first);
 		state.add(second);
 
@@ -399,7 +399,7 @@ public final class M2GameTests {
 
 		for (int i = 0; i < rules.maxHomes(); i++) {
 			state.add(new HomeRecord(UUID.randomUUID(), player.getUUID(), "Full" + i,
-					helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE));
+					helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1));
 		}
 
 		try {
@@ -438,7 +438,7 @@ public final class M2GameTests {
 
 		// Deliberately store a colour the beacon does not have, to prove it gets corrected.
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Tinted",
-				helper.getLevel().dimension(), beacon, 0F, 0F, 0x123456);
+				helper.getLevel().dimension(), beacon, 0F, 0F, 0x123456, 1);
 		state.add(home);
 
 		helper.runAfterDelay(80, () -> {
@@ -494,7 +494,7 @@ public final class M2GameTests {
 		BlockPos beacon = helper.absolutePos(beaconRelative);
 
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Beside",
-				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
 		state.add(home);
 
 		try {
@@ -549,7 +549,7 @@ public final class M2GameTests {
 		BlockPos beacon = helper.absolutePos(beaconRelative);
 
 		HomeRecord home = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Boxed",
-				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE);
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
 		state.add(home);
 
 		try {
@@ -766,6 +766,76 @@ public final class M2GameTests {
 
 		if (XpAccount.totalPoints(player) != 0) {
 			throw helper.assertionException("clearing experience should leave nothing");
+		}
+
+		helper.succeed();
+	}
+
+	/**
+	 * A beacon reports its pyramid immediately, without waiting to tick.
+	 *
+	 * <p>This is the case that broke travelling to a distant home. A beacon works its own size out
+	 * as it ticks, so a chunk that has just been force loaded reports zero layers and the home is
+	 * refused as "pyramid too small" - at exactly the distance where force loading is the whole
+	 * point. Deliberately no delay here: reading straight away is the bug.
+	 */
+	@GameTest
+	public void aFreshlyLoadedBeaconReportsItsPyramidWithoutTicking(GameTestHelper helper) {
+		BlockPos relative = buildBeacon(helper, 2, 1, 2);
+		BlockPos absolute = helper.absolutePos(relative);
+
+		BeaconScan.Lookup lookup = BeaconScan.lookup(helper.getLevel(), absolute, true);
+
+		if (lookup.presence() != BeaconScan.Presence.PRESENT) {
+			throw helper.assertionException("the beacon should be found, got " + lookup.presence());
+		}
+
+		int levels = lookup.found().orElseThrow().levels();
+
+		if (levels < 1) {
+			throw helper.assertionException(
+					"a one layer pyramid should report at least one layer straight away, got " + levels);
+		}
+
+		if (!lookup.found().orElseThrow().qualifies(1)) {
+			throw helper.assertionException("it should qualify at the default rule immediately");
+		}
+
+		helper.succeed();
+	}
+
+	/** Measuring the pyramid agrees with how it was built, and stops at an incomplete layer. */
+	@GameTest
+	public void measuringThePyramidCountsCompleteLayersOnly(GameTestHelper helper) {
+		// Two full layers: a 5x5 under a 3x3, with the beacon on top.
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				helper.setBlock(new BlockPos(8 + dx, 1, 8 + dz), Blocks.IRON_BLOCK);
+			}
+		}
+
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dz = -1; dz <= 1; dz++) {
+				helper.setBlock(new BlockPos(8 + dx, 2, 8 + dz), Blocks.IRON_BLOCK);
+			}
+		}
+
+		BlockPos beacon = helper.absolutePos(new BlockPos(8, 3, 8));
+		helper.setBlock(new BlockPos(8, 3, 8), Blocks.BEACON);
+
+		int measured = BeaconScan.measurePyramid(helper.getLevel(), beacon);
+
+		if (measured != 2) {
+			throw helper.assertionException("expected two complete layers, measured " + measured);
+		}
+
+		// Knock a corner out of the wider layer: it is no longer complete, so only one layer counts.
+		helper.setBlock(new BlockPos(6, 1, 6), Blocks.AIR);
+
+		int afterHole = BeaconScan.measurePyramid(helper.getLevel(), beacon);
+
+		if (afterHole != 1) {
+			throw helper.assertionException("an incomplete layer should not count, measured " + afterHole);
 		}
 
 		helper.succeed();

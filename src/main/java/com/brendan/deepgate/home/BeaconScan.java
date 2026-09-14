@@ -6,6 +6,8 @@ import java.util.Optional;
 import com.brendan.deepgate.mixin.BeaconBlockEntityAccessor;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BeaconBeamOwner;
@@ -20,6 +22,9 @@ import net.minecraft.world.level.block.entity.BeaconBlockEntity;
  * No beacon registry, no per-tick sweep, nothing to keep in sync (section 53).
  */
 public final class BeaconScan {
+	/** Vanilla allows at most four pyramid layers. */
+	public static final int MAX_PYRAMID_LAYERS = 4;
+
 	private BeaconScan() {
 	}
 
@@ -99,17 +104,95 @@ public final class BeaconScan {
 	 */
 	public static Lookup lookup(ServerLevel level, BlockPos pos, boolean forceLoad) {
 		if (forceLoad) {
-			level.getChunkAt(pos);
+			loadAround(level, pos);
 		} else if (!level.isLoaded(pos)) {
 			return new Lookup(Presence.UNKNOWN, Optional.empty());
 		}
 
 		if (level.getBlockEntity(pos) instanceof BeaconBlockEntity beacon) {
-			return new Lookup(Presence.PRESENT, Optional.of(
-					new Found(pos, beacon, ((BeaconBlockEntityAccessor) beacon).deepgate$getLevels())));
+			return new Lookup(Presence.PRESENT, Optional.of(new Found(pos, beacon, levelsOf(level, pos, beacon))));
 		}
 
 		return new Lookup(Presence.ABSENT, Optional.empty());
+	}
+
+	/**
+	 * Pull in the beacon chunk and its eight neighbours.
+	 *
+	 * <p>One chunk is not enough. The arrival search reaches several blocks out, so a beacon near a
+	 * chunk edge has candidate positions in the next chunk along; those would read as unloaded and be
+	 * skipped, and a home with plenty of room around it would refuse to place anyone. The pyramid
+	 * measurement reaches outwards too.
+	 *
+	 * <p>A three by three is the same shape vanilla loads around a portal or gateway destination, and
+	 * comfortably covers both.
+	 */
+	private static void loadAround(ServerLevel level, BlockPos pos) {
+		int chunkX = SectionPos.blockToSectionCoord(pos.getX());
+		int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
+
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dz = -1; dz <= 1; dz++) {
+				level.getChunk(chunkX + dx, chunkZ + dz);
+			}
+		}
+	}
+
+	/**
+	 * How many pyramid layers a beacon has, answered immediately.
+	 *
+	 * <p>A beacon works its own pyramid size out while it ticks, so the field it stores reads zero
+	 * for a chunk that has only just been loaded. Travelling to a distant home does exactly that -
+	 * loads the chunk and asks straight away - and would be told the beacon is too small when it is
+	 * nothing of the sort.
+	 *
+	 * <p>So the stored value is used when it has been worked out, and the pyramid is measured
+	 * directly when it has not. Measuring is a few hundred block reads at most and is only reached on
+	 * a freshly loaded beacon.
+	 */
+	private static int levelsOf(ServerLevel level, BlockPos pos, BeaconBlockEntity beacon) {
+		int known = ((BeaconBlockEntityAccessor) beacon).deepgate$getLevels();
+		return known > 0 ? known : measurePyramid(level, pos);
+	}
+
+	/**
+	 * Measure the pyramid under a beacon the way vanilla does: complete squares of beacon base
+	 * blocks, each one wider than the last, counted upwards from the layer directly beneath.
+	 */
+	public static int measurePyramid(ServerLevel level, BlockPos beacon) {
+		int layers = 0;
+		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+
+		for (int layer = 1; layer <= MAX_PYRAMID_LAYERS; layer++) {
+			int y = beacon.getY() - layer;
+
+			if (y < level.getMinY()) {
+				break;
+			}
+
+			if (!isCompleteLayer(level, beacon, cursor, layer, y)) {
+				break;
+			}
+
+			layers = layer;
+		}
+
+		return layers;
+	}
+
+	private static boolean isCompleteLayer(ServerLevel level, BlockPos beacon,
+			BlockPos.MutableBlockPos cursor, int layer, int y) {
+		for (int x = beacon.getX() - layer; x <= beacon.getX() + layer; x++) {
+			for (int z = beacon.getZ() - layer; z <= beacon.getZ() + layer; z++) {
+				cursor.set(x, y, z);
+
+				if (!level.getBlockState(cursor).is(BlockTags.BEACON_BASE_BLOCKS)) {
+					return false;
+				}
+			}
+		}
+
+		return true;
 	}
 
 	/** The beacon still standing at a recorded position, without forcing the chunk to load. */

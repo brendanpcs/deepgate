@@ -28,7 +28,8 @@ public record HomeRecord(
 		BlockPos beacon,
 		float yaw,
 		float pitch,
-		int beamColour) {
+		int beamColour,
+		int pyramidLayers) {
 
 	/** Used when a beacon has no beam, or its colour has not been observed yet. */
 	public static final int WHITE = 0xFFFFFF;
@@ -43,17 +44,29 @@ public record HomeRecord(
 			Codec.FLOAT.fieldOf("yaw").forGetter(HomeRecord::yaw),
 			Codec.FLOAT.fieldOf("pitch").forGetter(HomeRecord::pitch),
 			// Optional so records written before colours were stored still load.
-			Codec.INT.optionalFieldOf("beam_colour", WHITE).forGetter(HomeRecord::beamColour)
+			Codec.INT.optionalFieldOf("beam_colour", WHITE).forGetter(HomeRecord::beamColour),
+			// Optional so records written before this was stored still load.
+			Codec.INT.optionalFieldOf("pyramid_layers", 1).forGetter(HomeRecord::pyramidLayers)
 	).apply(instance, HomeRecord::new));
 
 	/** A copy under a new name, keeping the same identity so a rename is not a delete and recreate. */
 	public HomeRecord renamedTo(String newName) {
-		return new HomeRecord(id, owner, newName, dimension, beacon, yaw, pitch, beamColour);
+		return new HomeRecord(id, owner, newName, dimension, beacon, yaw, pitch, beamColour, pyramidLayers);
 	}
 
 	/** A copy carrying a freshly observed beam colour. */
 	public HomeRecord withBeamColour(int colour) {
-		return new HomeRecord(id, owner, name, dimension, beacon, yaw, pitch, colour);
+		return new HomeRecord(id, owner, name, dimension, beacon, yaw, pitch, colour, pyramidLayers);
+	}
+
+	/**
+	 * A copy carrying a freshly observed pyramid size.
+	 *
+	 * <p>Kept so the list can describe a home whose beacon is too far away to read. It is never the
+	 * authority: what a beacon is now is measured from the beacon, not remembered.
+	 */
+	public HomeRecord withPyramidLayers(int layers) {
+		return new HomeRecord(id, owner, name, dimension, beacon, yaw, pitch, beamColour, layers);
 	}
 
 	/** Whether this home is bound to the given beacon block. */
