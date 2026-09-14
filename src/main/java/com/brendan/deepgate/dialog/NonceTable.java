@@ -1,7 +1,7 @@
 package com.brendan.deepgate.dialog;
 
-import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -27,19 +27,25 @@ public final class NonceTable {
 	/** Hard ceiling per player, in case a client spams screen opens without ever clicking. */
 	private static final int MAX_PER_PLAYER = 64;
 
-	private final Map<UUID, Map<String, Long>> issued = new HashMap<>();
+	/**
+	 * Insertion-ordered per player, so eviction can drop the genuinely oldest token.
+	 *
+	 * <p>Ordering by expiry would not do: many nonces are issued on the same tick when a screen is
+	 * drawn, and they all share an expiry, so "oldest" would be decided by hash order.
+	 */
+	private final Map<UUID, LinkedHashMap<String, Long>> issued = new LinkedHashMap<>();
 
 	/** Issue a nonce for a button the given player is about to be shown. */
 	public String issue(UUID playerId, long currentTick) {
-		Map<String, Long> forPlayer = issued.computeIfAbsent(playerId, id -> new HashMap<>());
+		LinkedHashMap<String, Long> forPlayer =
+				issued.computeIfAbsent(playerId, id -> new LinkedHashMap<>());
 		purge(forPlayer, currentTick);
 
-		if (forPlayer.size() >= MAX_PER_PLAYER) {
+		while (forPlayer.size() >= MAX_PER_PLAYER) {
 			// Drop the oldest rather than refusing to draw a screen.
-			forPlayer.entrySet().stream()
-					.min(Map.Entry.comparingByValue())
-					.map(Map.Entry::getKey)
-					.ifPresent(forPlayer::remove);
+			Iterator<String> oldest = forPlayer.keySet().iterator();
+			oldest.next();
+			oldest.remove();
 		}
 
 		String nonce = Long.toUnsignedString(ThreadLocalRandom.current().nextLong(), 36)
@@ -58,7 +64,7 @@ public final class NonceTable {
 			return false;
 		}
 
-		Map<String, Long> forPlayer = issued.get(playerId);
+		LinkedHashMap<String, Long> forPlayer = issued.get(playerId);
 
 		if (forPlayer == null) {
 			return false;

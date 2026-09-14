@@ -14,7 +14,8 @@
 			"com.brendan.deepgate.Deepgate"
 		],
 		"fabric-gametest": [
-			"com.brendan.deepgate.gametest.M1GameTests"
+			"com.brendan.deepgate.gametest.M1GameTests",
+			"com.brendan.deepgate.gametest.M2GameTests"
 		]
 	},
 	"mixins": [

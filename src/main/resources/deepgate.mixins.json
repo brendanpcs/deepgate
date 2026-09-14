@@ -3,6 +3,7 @@
 	"package": "com.brendan.deepgate.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
+		"BeaconBlockEntityAccessor",
 		"ServerCommonPacketListenerImplMixin"
 	],
 	"injectors": {

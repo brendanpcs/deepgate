@@ -8,8 +8,19 @@ import com.brendan.deepgate.request.TpaRequest;
 import com.brendan.deepgate.ui.Feedback;
 import com.brendan.deepgate.ui.TpaUi;
 
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+
+import com.brendan.deepgate.home.HomeRecord;
+import com.brendan.deepgate.ui.HomeUi;
+import com.brendan.deepgate.ui.SpawnUi;
+
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -65,6 +76,17 @@ public final class DeepgateCommands {
 		dispatcher.register(Commands.literal("tparequests")
 				.executes(ctx -> openInbox(ctx.getSource())));
 
+		dispatcher.register(Commands.literal("spawn")
+				.executes(ctx -> spawn(ctx.getSource())));
+
+		// /home lists; /home <name> travels straight there. Creating a home is deliberately not a
+		// command: it happens by walking into a beacon beam (spec sections 2 and 15).
+		dispatcher.register(Commands.literal("home")
+				.executes(ctx -> homeList(ctx.getSource()))
+				.then(Commands.argument("name", StringArgumentType.greedyString())
+						.suggests(DeepgateCommands::suggestHomes)
+						.executes(ctx -> homeNamed(ctx.getSource(), StringArgumentType.getString(ctx, "name")))));
+
 		dispatcher.register(Commands.literal("back")
 				.executes(ctx -> back(ctx.getSource())));
 	}
@@ -90,6 +112,42 @@ public final class DeepgateCommands {
 			throws CommandSyntaxException {
 		TpaUi.denyCommand(source.getPlayerOrException(), namedSender);
 		return 1;
+	}
+
+	private static int spawn(CommandSourceStack source) throws CommandSyntaxException {
+		SpawnUi.open(source.getPlayerOrException());
+		return 1;
+	}
+
+	private static int homeList(CommandSourceStack source) throws CommandSyntaxException {
+		HomeUi.openList(source.getPlayerOrException());
+		return 1;
+	}
+
+	private static int homeNamed(CommandSourceStack source, String name) throws CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		Optional<HomeRecord> home = Deepgate.homes().homeNamed(player, name);
+
+		if (home.isEmpty()) {
+			player.sendSystemMessage(Component.literal("You have no home called " + name + "."));
+			return 0;
+		}
+
+		HomeUi.travelTo(player, home.get());
+		return 1;
+	}
+
+	private static CompletableFuture<Suggestions> suggestHomes(
+			CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+		ServerPlayer player = context.getSource().getPlayer();
+
+		if (player != null) {
+			for (HomeRecord home : Deepgate.homes().homesOf(player)) {
+				builder.suggest(home.name());
+			}
+		}
+
+		return builder.buildFuture();
 	}
 
 	private static int cancel(CommandSourceStack source) throws CommandSyntaxException {
