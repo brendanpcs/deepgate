@@ -273,7 +273,7 @@ public final class HomeService {
 			return Availability.PYRAMID_TOO_SMALL;
 		}
 
-		if (!BeaconScan.hasBeam(found.get().beacon())) {
+		if (!BeaconScan.hasClearBeam(level, home.beacon())) {
 			return Availability.BEAM_BLOCKED;
 		}
 
@@ -371,9 +371,13 @@ public final class HomeService {
 		}
 
 		DeepgateState state = DeepgateState.get(player.level().getServer());
+
+		// A beacon already claimed by someone carries their name; everyone else joins it rather than
+		// giving the same place a second name.
+		String name = state.firstHomeNameAt(player.level().dimension(), beacon).orElse(rawName);
 		List<String> existing = state.homesOf(player.getUUID()).stream().map(HomeRecord::name).toList();
 
-		HomeName.Result validation = HomeName.validate(rawName, existing);
+		HomeName.Result validation = HomeName.validate(name, existing);
 
 		if (!(validation instanceof HomeName.Result.Valid valid)) {
 			return validation;
@@ -399,22 +403,52 @@ public final class HomeService {
 		return validation;
 	}
 
-	/** Rename, using exactly the same validation as creation (section 19). */
+	/**
+	 * Rename a beacon, for everyone who has a home on it (section 19).
+	 *
+	 * <p>A beacon carries one name. Renaming it renames every home bound to it, whoever owns them,
+	 * because the name describes the place rather than one player's bookmark of it - a market that
+	 * becomes a workshop has become one for everybody who goes there.
+	 *
+	 * <p>Names still have to stay unique per player, so the new name is checked against the other
+	 * homes of every affected owner. A clash refuses the whole rename rather than renaming some
+	 * players and not others, which would silently split the beacon in two.
+	 */
 	public HomeName.Result rename(ServerPlayer player, HomeRecord home, String rawName) {
 		DeepgateState state = DeepgateState.get(player.level().getServer());
+		List<HomeRecord> onBeacon = state.homesAt(home.dimension(), home.beacon());
 
-		List<String> existing = state.homesOf(player.getUUID()).stream()
-				.filter(other -> !other.id().equals(home.id()))
-				.map(HomeRecord::name)
-				.toList();
+		// Validated against the renaming player first, so the usual messages come back unchanged.
+		HomeName.Result validation = HomeName.validate(rawName, otherNamesOf(state, player.getUUID(), onBeacon));
 
-		HomeName.Result validation = HomeName.validate(rawName, existing);
+		if (!(validation instanceof HomeName.Result.Valid valid)) {
+			return validation;
+		}
 
-		if (validation instanceof HomeName.Result.Valid valid) {
-			state.replace(home.renamedTo(valid.name()));
+		for (HomeRecord affected : onBeacon) {
+			if (affected.owner().equals(player.getUUID())) {
+				continue;
+			}
+
+			if (HomeName.isTaken(valid.name(), otherNamesOf(state, affected.owner(), onBeacon))) {
+				return new HomeName.Result.Invalid(
+						"Someone else with a home here already has a home called " + valid.name());
+			}
+		}
+
+		for (HomeRecord affected : onBeacon) {
+			state.replace(affected.renamedTo(valid.name()));
 		}
 
 		return validation;
+	}
+
+	/** The names of this owner's homes that are not on the beacon being renamed. */
+	private static List<String> otherNamesOf(DeepgateState state, UUID owner, List<HomeRecord> onBeacon) {
+		return state.homesOf(owner).stream()
+				.filter(home -> onBeacon.stream().noneMatch(shared -> shared.id().equals(home.id())))
+				.map(HomeRecord::name)
+				.toList();
 	}
 
 	public boolean delete(ServerPlayer player, HomeRecord home) {

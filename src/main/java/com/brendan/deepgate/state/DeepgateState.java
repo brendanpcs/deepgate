@@ -106,6 +106,11 @@ public final class DeepgateState extends SavedData {
 				.findFirst();
 	}
 
+	/** Every home bound to a beacon, whoever owns them, in creation order. */
+	public List<HomeRecord> homesAt(ResourceKey<Level> dimension, BlockPos beacon) {
+		return homes.stream().filter(home -> home.isAt(dimension, beacon)).toList();
+	}
+
 	public void add(HomeRecord home) {
 		homes.add(home);
 		setDirty();

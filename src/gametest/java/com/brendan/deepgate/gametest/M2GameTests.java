@@ -306,7 +306,8 @@ public final class M2GameTests {
 		HomeRecord first = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Alpha",
 				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
 		HomeRecord second = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Beta",
-				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
+				helper.getLevel().dimension(), helper.absolutePos(new BlockPos(22, 1, 22)),
+				0F, 0F, HomeRecord.WHITE, 1);
 		state.add(first);
 		state.add(second);
 
@@ -886,6 +887,138 @@ public final class M2GameTests {
 		} finally {
 			state.remove(original.id());
 			state.remove(divergent.id());
+		}
+
+		helper.succeed();
+	}
+
+	/**
+	 * Renaming a shared beacon renames it for everyone who has a home on it.
+	 *
+	 * <p>The name describes the place, not one player's bookmark of it.
+	 */
+	@GameTest
+	public void renamingASharedBeaconRenamesItForEveryone(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
+		BlockPos beacon = helper.absolutePos(new BlockPos(14, 1, 14));
+
+		UUID neighbour = UUID.randomUUID();
+
+		HomeRecord mine = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Market",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
+		HomeRecord theirs = new HomeRecord(UUID.randomUUID(), neighbour, "Market",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
+		// A home of theirs somewhere else must be left alone.
+		HomeRecord elsewhere = new HomeRecord(UUID.randomUUID(), neighbour, "Mine",
+				helper.getLevel().dimension(), helper.absolutePos(new BlockPos(16, 1, 16)),
+				0F, 0F, HomeRecord.WHITE, 1);
+
+		state.add(mine);
+		state.add(theirs);
+		state.add(elsewhere);
+
+		try {
+			if (!(Deepgate.homes().rename(player, mine, "Bazaar") instanceof HomeName.Result.Valid)) {
+				throw helper.assertionException("the rename should have been accepted");
+			}
+
+			if (!state.home(mine.id()).orElseThrow().name().equals("Bazaar")) {
+				throw helper.assertionException("the renaming player should see the new name");
+			}
+
+			if (!state.home(theirs.id()).orElseThrow().name().equals("Bazaar")) {
+				throw helper.assertionException("everyone on the beacon should see the new name");
+			}
+
+            if (!state.home(elsewhere.id()).orElseThrow().name().equals("Mine")) {
+				throw helper.assertionException("a home on another beacon must not be touched");
+			}
+		} finally {
+			state.remove(mine.id());
+			state.remove(theirs.id());
+			state.remove(elsewhere.id());
+		}
+
+		helper.succeed();
+	}
+
+	/** A rename is refused outright if it would clash for anyone sharing the beacon. */
+	@GameTest
+	public void aSharedRenameIsRefusedIfItClashesForSomeoneElse(GameTestHelper helper) {
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		DeepgateState state = DeepgateState.get(helper.getLevel().getServer());
+		BlockPos beacon = helper.absolutePos(new BlockPos(18, 1, 18));
+
+		UUID neighbour = UUID.randomUUID();
+
+		HomeRecord mine = new HomeRecord(UUID.randomUUID(), player.getUUID(), "Market",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
+		HomeRecord theirs = new HomeRecord(UUID.randomUUID(), neighbour, "Market",
+				helper.getLevel().dimension(), beacon, 0F, 0F, HomeRecord.WHITE, 1);
+		// They already have a home called Workshop somewhere else.
+		HomeRecord clash = new HomeRecord(UUID.randomUUID(), neighbour, "Workshop",
+				helper.getLevel().dimension(), helper.absolutePos(new BlockPos(20, 1, 20)),
+				0F, 0F, HomeRecord.WHITE, 1);
+
+		state.add(mine);
+		state.add(theirs);
+		state.add(clash);
+
+		try {
+			if (!(Deepgate.homes().rename(player, mine, "Workshop") instanceof HomeName.Result.Invalid)) {
+				throw helper.assertionException("a clash for another owner should refuse the rename");
+			}
+
+			// Refused means nothing moved: no half renamed beacon.
+			if (!state.home(mine.id()).orElseThrow().name().equals("Market")
+					|| !state.home(theirs.id()).orElseThrow().name().equals("Market")) {
+				throw helper.assertionException("a refused rename must leave every home untouched");
+			}
+		} finally {
+			state.remove(mine.id());
+			state.remove(theirs.id());
+			state.remove(clash.id());
+		}
+
+		helper.succeed();
+	}
+
+	/**
+	 * Beam obstruction is measured from the blocks, not from what the beacon has worked out.
+	 *
+	 * <p>No delay here on purpose. Beam sections are built while a beacon ticks, so a freshly loaded
+	 * beacon has none - and reading them would call a perfectly clear beam blocked, which is what
+	 * happened when travelling to a home whose chunk had just been pulled in.
+	 */
+	@GameTest(structure = "fabric-gametest-api-v1:empty", skyAccess = true)
+	public void beamObstructionIsMeasuredFromTheBlocks(GameTestHelper helper) {
+		BlockPos relative = buildBeacon(helper, 3, 1, 3);
+		BlockPos beacon = helper.absolutePos(relative);
+
+		if (!BeaconScan.hasClearBeam(helper.getLevel(), beacon)) {
+			throw helper.assertionException("a beacon with open sky should read as clear straight away");
+		}
+
+		// Glass lets a beam through, as it does in game.
+		helper.setBlock(relative.above(3), Blocks.GLASS);
+
+		if (!BeaconScan.hasClearBeam(helper.getLevel(), beacon)) {
+			throw helper.assertionException("glass must not count as an obstruction");
+		}
+
+		// Stone does not.
+		helper.setBlock(relative.above(3), Blocks.STONE);
+
+		if (BeaconScan.hasClearBeam(helper.getLevel(), beacon)) {
+			throw helper.assertionException("solid stone should block the beam");
+		}
+
+		// Bedrock is ignored: a Nether roof is a ceiling nobody can clear.
+		helper.setBlock(relative.above(3), Blocks.BEDROCK);
+
+		if (!BeaconScan.hasClearBeam(helper.getLevel(), beacon)) {
+			throw helper.assertionException("bedrock must not count as an obstruction");
 		}
 
 		helper.succeed();

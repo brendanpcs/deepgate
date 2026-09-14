@@ -10,6 +10,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.entity.BeaconBeamOwner;
 import net.minecraft.world.level.block.entity.BeaconBlockEntity;
 
@@ -179,13 +181,37 @@ public final class BeaconScan {
 	}
 
 	/**
-	 * Whether the beam of a beacon is currently unobstructed.
+	 * Whether anything is actually standing in the way of the beam.
 	 *
-	 * <p>A beacon with no beam sections is either blocked or has no pyramid; either way its home is
-	 * temporarily unavailable rather than deleted (section 18).
+	 * <p>Deliberately not {@code getBeamSections()}. A beacon works its beam out while it ticks, so a
+	 * chunk that has only just been loaded reports no sections at all - and a home you travelled to
+	 * from far away would be refused for a blocked beam that is nothing of the sort.
+	 *
+	 * <p>The column above the beacon is walked instead, and only blocks that dampen light count.
+	 * Glass, water and the like let a beam through, exactly as they do in game.
+	 *
+	 * <p>Bedrock is ignored. A beacon under the Nether roof or on the floor of the End has a ceiling
+	 * it can never clear, and refusing those would rule out whole dimensions for reasons the player
+	 * cannot do anything about.
 	 */
-	public static boolean hasBeam(BeaconBlockEntity beacon) {
-		return !beacon.getBeamSections().isEmpty();
+	public static boolean hasClearBeam(ServerLevel level, BlockPos beacon) {
+		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+
+		for (int y = beacon.getY() + 1; y <= level.getMaxY(); y++) {
+			cursor.set(beacon.getX(), y, beacon.getZ());
+
+			BlockState state = level.getBlockState(cursor);
+
+			if (state.is(Blocks.BEDROCK)) {
+				continue;
+			}
+
+			if (state.getLightDampening() > 0) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

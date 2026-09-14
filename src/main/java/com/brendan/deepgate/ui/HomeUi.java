@@ -177,17 +177,29 @@ public final class HomeUi {
 		Optional<String> existing = com.brendan.deepgate.state.DeepgateState.get(server)
 				.firstHomeNameAt(player.level().dimension(), beacon);
 
-		List<DialogBody> body = new ArrayList<>();
-		body.add(Dialogs.text("Name this beacon so you can return to it."));
+		if (existing.isPresent()) {
+			// The beacon already carries a name, and a beacon carries only one. Offering a text field
+			// here would invite typing something that is then ignored, so confirm instead. Renaming it
+			// later renames it for everyone, which is the honest way to change it.
+			payload.putString(KEY_NAME, existing.get());
 
-		existing.ifPresent(name -> body.add(Dialogs.text("Already known as " + name + ".")));
+			Deepgate.dialogs().open(player, Dialogs.confirmation(
+					"Set Home",
+					List.of(
+							Dialogs.text("This beacon is known as " + existing.get() + "."),
+							Dialogs.text("Save it as one of your homes under that name?")),
+					Dialogs.commit(Deepgate.dialogs(), player.getUUID(), tick,
+							Component.literal("Save"), SAVE, payload),
+					Dialogs.close()));
+			return;
+		}
 
 		Deepgate.dialogs().open(player, Dialogs.textEntry(
 				"Set Home",
-				body,
+				List.of(Dialogs.text("Name this beacon so you can return to it.")),
 				KEY_NAME,
 				"Home name",
-				existing.orElse(""),
+				"",
 				HomeName.MAX_LENGTH,
 				Dialogs.commitWithInputs(Deepgate.dialogs(), player.getUUID(), tick,
 						Component.literal("Save"), SAVE, payload),
@@ -223,9 +235,21 @@ public final class HomeUi {
 		CompoundTag payload = new CompoundTag();
 		payload.putString(KEY_HOME, home.id().toString());
 
+		int sharedWith = com.brendan.deepgate.state.DeepgateState.get(player.level().getServer())
+				.homesAt(home.dimension(), home.beacon()).size() - 1;
+
+		List<DialogBody> body = new ArrayList<>();
+		body.add(Dialogs.text("Choose a new name."));
+
+		if (sharedWith > 0) {
+			body.add(Dialogs.text(sharedWith == 1
+					? "One other player has a home here; it will be renamed too."
+					: sharedWith + " other players have homes here; they will be renamed too."));
+		}
+
 		Deepgate.dialogs().open(player, Dialogs.textEntry(
 				"Rename " + home.name(),
-				List.of(Dialogs.text("Choose a new name.")),
+				body,
 				KEY_NAME,
 				"Home name",
 				home.name(),
